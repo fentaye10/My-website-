@@ -1,0 +1,2958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Supermarket POS</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            primary: '#5D5CDE',
+            secondary: '#9E9EF1',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    .item-card {
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .item-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    }
+    .dark .item-card:hover {
+      box-shadow: 0 10px 15px -3px rgba(255, 255, 255, 0.05), 0 4px 6px -2px rgba(255, 255, 255, 0.025);
+    }
+    .cart-item-enter {
+      animation: slideIn 0.3s ease-out;
+    }
+    @keyframes slideIn {
+      from { transform: translateX(30px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    .number-input::-webkit-inner-spin-button,
+    .number-input::-webkit-outer-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .number-input {
+      -moz-appearance: textfield;
+    }
+    .fade-in {
+      animation: fadeIn 0.3s ease-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    .shake {
+      animation: shake 0.5s;
+    }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+      20%, 40%, 60%, 80% { transform: translateX(5px); }
+    }
+    .scrollbar-hide::-webkit-scrollbar {
+      display: none;
+    }
+    .scrollbar-hide {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    /* NEW: Style for the active sell button */
+    .sell-btn.selling-active {
+      background-color: var(--secondary, #9E9EF1); /* Use secondary color, fallback to direct color */
+      transition: background-color 0.2s ease-in-out; /* Smooth transition */
+    }
+
+    /* Print styles */
+    @media print {
+      body > *:not(#receipt-modal) {
+        display: none !important;
+      }
+      #receipt-modal {
+        position: static !important;
+        display: block !important;
+        visibility: visible !important;
+        width: auto !important;
+        height: auto !important;
+        max-width: none !important;
+        max-height: none !important;
+        overflow: visible !important;
+        background-color: white !important;
+        color: black !important;
+        box-shadow: none !important;
+        transform: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      #receipt-modal .bg-white {
+        background-color: white !important;
+        box-shadow: none !important;
+      }
+      #receipt-modal .dark\:bg-gray-800,
+      #receipt-modal .dark\:text-gray-200,
+      #receipt-modal .dark\:border-gray-700,
+      #receipt-modal .dark\:text-gray-400 {
+        background-color: white !important;
+        color: black !important;
+        border-color: #e5e7eb !important; /* light gray border */
+      }
+      #receipt-modal button {
+        display: none !important; /* Hide buttons in print */
+      }
+      /* Ensure text is black for printing */
+      #receipt-modal * {
+        color: black !important;
+      }
+    }
+  </style>
+</head>
+<body class="bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 min-h-screen transition-colors duration-300">
+  <!-- Login Screen -->
+  <div id="login-screen" class="fixed inset-0 flex items-center justify-center z-50 bg-white dark:bg-gray-900">
+    <div class="max-w-md w-full p-8 bg-white dark:bg-gray-800 rounded-lg shadow-lg fade-in">
+      <div class="text-center mb-8">
+        <h1 id="app-title" class="text-3xl font-bold text-primary dark:text-secondary">SuperMarket POS</h1>
+        <p class="text-gray-500 dark:text-gray-400 mt-2">Employee Login</p>
+      </div>
+      
+      <form id="login-form" class="space-y-6">
+        <div>
+          <label for="username" class="block text-sm font-medium mb-1">Username</label>
+          <input
+            type="text"
+            id="username"
+            class="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-base focus:outline-none focus:ring-2 focus:ring-primary"
+            required
+          >
+        </div>
+        
+        <div>
+          <label for="password" class="block text-sm font-medium mb-1">Password</label>
+          <input
+            type="password"
+            id="password"
+            class="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-base focus:outline-none focus:ring-2 focus:ring-primary"
+            required
+          >
+        </div>
+        
+        <div id="login-error" class="hidden text-red-500 text-sm text-center"></div>
+        
+        <button
+          type="submit"
+          class="w-full bg-primary hover:bg-secondary text-white py-3 px-4 rounded-lg transition-colors"
+        >
+          Login
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div id="main-app" class="hidden">
+    <!-- User Header -->
+    <div class="bg-primary dark:bg-primary/80 text-white py-2 px-4">
+      <div class="container mx-auto flex justify-between items-center">
+        <div class="flex items-center">
+          <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+          </svg>
+          <div>
+            <span id="user-name">Employee</span>
+            <span id="user-role" class="text-xs bg-white/20 px-2 py-0.5 rounded ml-2">Role</span>
+          </div>
+        </div>
+        
+        <div class="flex items-center space-x-4">
+          <button id="add-product-header-btn" class="hidden text-sm bg-white/20 hover:bg-white/30 px-3 py-1 rounded transition-colors">
+            Add Product
+          </button>
+          <button id="daily-sales-btn" class="text-sm bg-white/20 hover:bg-white/30 px-3 py-1 rounded transition-colors">
+            Daily Sales
+          </button>
+          <button id="admin-panel-btn" class="hidden text-sm bg-white/20 hover:bg-white/30 px-3 py-1 rounded transition-colors">
+            Admin Panel
+          </button>
+          <button id="super-admin-btn" class="hidden text-sm bg-white/20 hover:bg-white/30 px-3 py-1 rounded transition-colors">
+            Super Admin
+          </button>
+          <button id="logout-btn" class="text-sm bg-white/20 hover:bg-white/30 px-3 py-1 rounded transition-colors">
+            Logout
+          </button>
+        </div>
+      </div>
+    </div>
+  
+    <div class="container mx-auto px-4 py-8">
+      <header class="mb-8">
+        <h1 id="main-app-title" class="text-3xl font-bold text-primary dark:text-secondary text-center mb-2">SuperMarket POS</h1>
+        <div class="flex flex-col sm:flex-row justify-between items-center">
+          <div class="mb-4 sm:mb-0 w-full sm:w-1/2">
+            <div class="relative">
+              <input 
+                type="text" 
+                id="search-input" 
+                placeholder="Search products..." 
+                class="w-full py-2 px-4 pr-10 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-base focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+              <svg class="absolute right-3 top-3 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+              </svg>
+            </div>
+          </div>
+          <div class="relative w-full sm:w-auto">
+            <button id="scroll-left" class="absolute left-0 top-1/2 transform -translate-y-1/2 z-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-full p-2 shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+              </svg>
+            </button>
+            <div id="categories-container" class="flex space-x-2 overflow-x-auto scrollbar-hide scroll-smooth px-8" style="scrollbar-width: none; -ms-overflow-style: none;">
+              <button id="category-all" class="category-btn bg-primary text-white px-4 py-2 rounded-lg whitespace-nowrap flex-shrink-0">All</button>
+              <button id="category-fruits" class="category-btn bg-gray-200 dark:bg-gray-800 px-4 py-2 rounded-lg whitespace-nowrap flex-shrink-0">Fruits</button>
+              <button id="category-dairy" class="category-btn bg-gray-200 dark:bg-gray-800 px-4 py-2 rounded-lg whitespace-nowrap flex-shrink-0">Dairy</button>
+              <button id="category-bakery" class="category-btn bg-gray-200 dark:bg-gray-800 px-4 py-2 rounded-lg whitespace-nowrap flex-shrink-0">Bakery</button>
+            </div>
+            <button id="scroll-right" class="absolute right-0 top-1/2 transform -translate-y-1/2 z-10 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-full p-2 shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <div class="flex flex-col lg:flex-row gap-8">
+        <!-- Products Grid -->
+        <div class="lg:w-2/3">
+          <h2 class="text-xl font-semibold mb-4">Products</h2>
+          <div id="products-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4"></div>
+        </div>
+
+        <!-- Shopping Cart -->
+        <div class="lg:w-1/3">
+          <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md sticky top-4">
+            <h2 class="text-xl font-semibold mb-4 flex items-center">
+              <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"></path>
+              </svg>
+              Shopping Cart
+            </h2>
+            <div id="cart-items" class="mb-4 max-h-64 overflow-y-auto">
+              <p id="empty-cart-message" class="text-gray-500 dark:text-gray-400 text-center py-4">Your cart is empty</p>
+            </div>
+            <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
+              <div class="flex justify-between mb-2">
+                <span>Subtotal:</span>
+                <span id="subtotal">0.00 Birr</span>
+              </div>
+              <div class="flex justify-between mb-2">
+                <span>Tax:</span>
+                <span id="tax">0.00 Birr</span>
+              </div>
+              <div class="flex justify-between font-bold">
+                <span>Total:</span>
+                <span id="total">0.00 Birr</span>
+              </div>
+              <div class="flex justify-between mb-2 text-sm text-orange-600 dark:text-orange-400">
+                <span>Total Profit Tax:</span>
+                <span id="profit-tax-amount">0.00 Birr</span>
+              </div>
+            </div>
+            <button id="checkout-btn" class="mt-4 w-full bg-primary hover:bg-secondary text-white py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+              Checkout
+            </button>
+            <div class="mt-4 space-y-2">
+              
+              <div class="text-xs text-center text-gray-500 dark:text-gray-400">
+                Current Limit: <span id="current-profit-limit">No limit set</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Daily Sales Modal -->
+    <div id="daily-sales-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+      <div class="bg-white dark:bg-gray-800 p-6 rounded-lg w-full max-w-6xl max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-start mb-6">
+          <h3 class="text-2xl font-bold text-primary">Daily Sales History</h3>
+          <button id="close-daily-sales" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+        <div id="daily-sales-content">
+          <!-- Daily sales tables will be populated here -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Receipt Modal -->
+    <div id="receipt-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+      <div class="bg-white dark:bg-gray-800 p-6 rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-start mb-4">
+          <h3 class="text-xl font-bold">Receipt</h3>
+          <button id="close-receipt" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+        <div class="text-center mb-4">
+          <h4 id="receipt-company-name" class="text-lg font-semibold">SuperMarket</h4>
+          <p id="receipt-address" class="text-sm text-gray-500 dark:text-gray-400">123 Market Street</p>
+          <p id="receipt-phone" class="text-sm text-gray-500 dark:text-gray-400">Tel: (123) 456-7890</p>
+          <p class="text-sm" id="receipt-date"></p>
+        </div>
+        <div class="border-t border-b border-gray-200 dark:border-gray-700 py-4 my-4">
+          <div id="receipt-items"></div>
+        </div>
+        <div class="space-y-1 text-right">
+          <p>Subtotal: <span id="receipt-subtotal"></span></p>
+          <p>Tax: <span id="receipt-tax"></span></p>
+          <p class="text-lg font-bold">Total: <span id="receipt-total"></span></p>
+        </div>
+        <div class="mt-6 text-center text-gray-500 dark:text-gray-400 text-sm">
+          <p>Thank you for shopping with us!</p>
+          <p>Please come again</p>
+        </div>
+        <div class="mt-6 flex justify-center">
+          <button id="print-receipt-btn" class="bg-primary hover:bg-secondary text-white py-2 px-4 rounded-lg transition-colors flex items-center">
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+            Print Receipt
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Super Admin Password Modal -->
+    <div id="super-admin-password-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[70] hidden">
+      <div class="bg-white dark:bg-gray-800 p-6 rounded-lg max-w-md w-full">
+        <h3 class="text-xl font-bold mb-4">Super Admin Access</h3>
+        <form id="super-admin-password-form" class="space-y-4">
+          <div>
+            <label for="super-admin-password" class="block text-sm font-medium mb-1">Enter Super Admin Password</label>
+            <input type="password" id="super-admin-password" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-primary" required>
+          </div>
+          <div id="super-admin-password-error" class="hidden text-red-500 text-sm"></div>
+          <div class="flex justify-end space-x-3 mt-6">
+            <button type="button" id="close-super-admin-password" class="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">Cancel</button>
+            <button type="submit" class="px-4 py-2 bg-primary hover:bg-secondary text-white rounded-lg transition-colors">Access</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Super Admin Modal -->
+    <div id="super-admin-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+      <div class="bg-white dark:bg-gray-800 p-6 rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-start mb-6">
+          <h3 class="text-2xl font-bold text-primary">Super Admin Panel</h3>
+          <button id="close-super-admin" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+        
+        <div class="space-y-6">
+          <div class="flex flex-col sm:flex-row gap-4 mb-4">
+            <button id="edit-profit-tax-btn" class="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg transition-colors text-sm">
+              Edit Profit Tax Percentage
+            </button>
+            <button id="profit-tax-limit-btn" class="w-full bg-orange-500 hover:bg-orange-600 text-white py-2 px-4 rounded-lg transition-colors text-sm">
+              Set Profit Tax Limit
+            </button>
+          </div>
+
+          <!-- Reset Sales History -->
+          <div class="border border-red-300 dark:border-red-700 rounded-lg p-4">
+            <h4 class="text-lg font-semibold text-red-600 dark:text-red-400 mb-2">Danger Zone</h4>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">This action will permanently delete all sales history and cannot be undone.</p>
+            <button id="reset-sales-history-btn" class="bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg transition-colors">
+              Reset Sales History
+            </button>
+          </div>
+          
+          <!-- Edit App Information -->
+          <div class="border border-gray-300 dark:border-gray-600 rounded-lg p-4">
+            <h4 class="text-lg font-semibold mb-4">Edit App Information</h4>
+            <form id="app-info-form" class="space-y-4">
+              <div>
+                <label for="app-title-input" class="block text-sm font-medium mb-1">App Title</label>
+                <input type="text" id="app-title-input" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-primary" required>
+              </div>
+              <div>
+                <label for="company-name-input" class="block text-sm font-medium mb-1">Company Name</label>
+                <input type="text" id="company-name-input" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-primary" required>
+              </div>
+              <div>
+                <label for="company-address-input" class="block text-sm font-medium mb-1">Company Address</label>
+                <input type="text" id="company-address-input" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-primary" required>
+              </div>
+              <div>
+                <label for="company-phone-input" class="block text-sm font-medium mb-1">Company Phone</label>
+                <input type="text" id="company-phone-input" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-primary" required>
+              </div>
+              <button type="submit" class="bg-primary hover:bg-secondary text-white py-2 px-4 rounded-lg transition-colors">
+                Save Changes
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Profit Tax Limit Modal -->
+    <div id="profit-tax-limit-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+      <div class="bg-white dark:bg-gray-800 p-6 rounded-lg max-w-md w-full">
+        <h3 class="text-xl font-bold mb-4">Set Profit Tax Limit</h3>
+        <form id="profit-tax-limit-form" class="space-y-4">
+          <div>
+            <label for="profit-limit-input" class="block text-sm font-medium mb-1">Profit Tax Limit (Birr)</label>
+            <input type="number" id="profit-limit-input" step="0.01" min="0" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-primary" required>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Sales will be blocked when total profit tax reaches this amount</p>
+          </div>
+          <div class="flex justify-end space-x-3 mt-6">
+            <button type="button" id="close-profit-tax-limit" class="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">Cancel</button>
+            <button type="submit" class="px-4 py-2 bg-primary hover:bg-secondary text-white rounded-lg transition-colors">Set Limit</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    
+<!-- Edit Profit Tax Percentage Modal -->
+<div id="edit-profit-tax-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+  <div class="bg-white dark:bg-gray-800 p-6 rounded-lg max-w-md w-full">
+    <h3 class="text-xl font-bold mb-4">Edit Profit Tax Percentage</h3>
+    <form id="edit-profit-tax-form" class="space-y-4">
+      <div>
+        <label for="profit-tax-input" class="block text-sm font-medium mb-1">Profit Tax Percentage</label>
+        <input type="number" id="profit-tax-input" min="0" max="100" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-primary" required>
+      </div>
+      <div class="flex justify-end space-x-3 mt-6">
+        <button type="button" id="close-edit-profit-tax" class="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">Cancel</button>
+        <button type="submit" class="px-4 py-2 bg-primary hover:bg-secondary text-white rounded-lg transition-colors">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+    <!-- Admin Panel Modal -->
+    <div id="admin-panel-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+      <div class="bg-white dark:bg-gray-800 p-6 rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-start mb-6">
+          <h3 class="text-2xl font-bold text-primary">Admin Panel</h3>
+          <button id="close-admin-panel" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+        
+        <!-- Admin Tabs -->
+        <div class="mb-6">
+          <div class="flex border-b border-gray-200 dark:border-gray-700">
+            <button id="tab-employees" class="admin-tab-btn px-4 py-2 border-b-2 border-primary text-primary dark:text-secondary dark:border-secondary">
+              Employees
+            </button>
+            <button id="tab-products" class="admin-tab-btn px-4 py-2 border-b-2 border-transparent text-gray-500 dark:text-gray-400">
+              Products
+            </button>
+            <button id="tab-sales" class="admin-tab-btn px-4 py-2 border-b-2 border-transparent text-gray-500 dark:text-gray-400">
+              Sales History
+            </button>
+            <button id="tab-top-products" class="admin-tab-btn px-4 py-2 border-b-2 border-transparent text-gray-500 dark:text-gray-400">
+              Product Performance
+            </button>
+            <button id="tab-product-history" class="admin-tab-btn px-4 py-2 border-b-2 border-transparent text-gray-500 dark:text-gray-400">
+              Product History
+            </button>
+          </div>
+        </div>
+        
+        <!-- Employees Tab Content -->
+        <div id="tab-content-employees" class="tab-content">
+          <div class="flex justify-between mb-4">
+            <h4 class="text-lg font-semibold">Employee Management</h4>
+            <button id="add-employee-btn" class="bg-primary hover:bg-secondary text-white py-1 px-3 rounded text-sm transition-colors flex items-center">
+              <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+              </svg>
+              Add Employee
+            </button>
+          </div>
+          
+          <div class="overflow-x-auto">
+            <table class="min-w-full bg-white dark:bg-gray-800 rounded-lg overflow-hidden">
+              <thead class="bg-gray-100 dark:bg-gray-700">
+                <tr>
+                  <th class="py-2 px-4 text-left">Username</th>
+                  <th class="py-2 px-4 text-left">Full Name</th>
+                  <th class="py-2 px-4 text-left">Role</th>
+                  <th class="py-2 px-4 text-left">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="employees-table-body">
+                <!-- Employee rows will be added here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+        
+        <!-- Products Tab Content -->
+        <div id="tab-content-products" class="tab-content hidden">
+          <div class="flex justify-between mb-4">
+            <h4 class="text-lg font-semibold">Product Management</h4>
+            <button id="add-product-btn" class="bg-primary hover:bg-secondary text-white py-1 px-3 rounded text-sm transition-colors flex items-center">
+              <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+              </svg>
+              Add Product
+            </button>
+          </div>
+          
+          <div class="overflow-x-auto">
+            <table class="min-w-full bg-white dark:bg-gray-800 rounded-lg overflow-hidden">
+              <thead class="bg-gray-100 dark:bg-gray-700">
+                <tr>
+                  <th class="py-2 px-4 text-left">ID</th>
+                  <th class="py-2 px-4 text-left">Name</th>
+                  <th class="py-2 px-4 text-left">Buy Price</th>
+                  <th class="py-2 px-4 text-left">Sale Price</th>
+                  <th class="py-2 px-4 text-left">Tax (%)</th>
+                  <th class="py-2 px-4 text-left">Quantity</th>
+                  <th class="py-2 px-4 text-left">Category</th>
+                  <th class="py-2 px-4 text-left">Unit</th>
+                  <th class="py-2 px-4 text-left">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="products-table-body">
+                <!-- Product rows will be added here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+        
+        <!-- Sales History Tab Content -->
+        <div id="tab-content-sales" class="tab-content hidden">
+          <h4 class="text-lg font-semibold mb-4">Sales History</h4>
+          <div id="sales-history-content" class="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+            <p class="text-center text-gray-500 dark:text-gray-400">No sales data available yet.</p>
+          </div>
+        </div>
+        
+        <!-- Product Performance Tab Content -->
+        <div id="tab-content-top-products" class="tab-content hidden">
+          <h4 class="text-lg font-semibold mb-4">Product Performance (Ordered by Profit)</h4>
+          <div class="overflow-x-auto">
+            <table class="min-w-full bg-white dark:bg-gray-800 rounded-lg overflow-hidden">
+              <thead class="bg-gray-100 dark:bg-gray-700">
+                <tr>
+                  <th class="py-2 px-4 text-left">Rank</th>
+                  <th class="py-2 px-4 text-left">Product</th>
+                  <th class="py-2 px-4 text-left">Original Qty</th>
+                  <th class="py-2 px-4 text-left">Sold Qty</th>
+                  <th class="py-2 px-4 text-left">Profit</th>
+                </tr>
+              </thead>
+              <tbody id="top-products-admin-content">
+                <!-- Product performance rows will be added here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+        
+        <!-- Product History Tab Content -->
+        <div id="tab-content-product-history" class="tab-content hidden">
+          <h4 class="text-lg font-semibold mb-4">Product Sales History</h4>
+          <div class="overflow-x-auto">
+            <table class="min-w-full bg-white dark:bg-gray-800 rounded-lg overflow-hidden">
+              <thead class="bg-gray-100 dark:bg-gray-700">
+                <tr>
+                  <th class="py-2 px-4 text-left">Product</th>
+                  <th class="py-2 px-4 text-left">Original Qty</th>
+                  <th class="py-2 px-4 text-left">Sold</th>
+                  <th class="py-2 px-4 text-left">Remaining</th>
+                  <th class="py-2 px-4 text-left">Total Sold (Birr)</th>
+                  <th class="py-2 px-4 text-left">Total Profit (Birr)</th>
+                </tr>
+              </thead>
+              <tbody id="product-history-table-body">
+                <!-- Product history rows will be added here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Reset Password Modal -->
+    <div id="reset-password-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] hidden">
+      <div class="bg-white dark:bg-gray-800 p-6 rounded-lg max-w-md w-full">
+        <h3 class="text-xl font-bold mb-4">Reset Password</h3>
+        <form id="reset-password-form" class="space-y-4">
+          <input type="hidden" id="reset-employee-id">
+          <div>
+            <label for="new-password" class="block text-sm font-medium mb-1">New Password</label>
+            <input type="password" id="new-password" class="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-primary" required>
+          </div>
+          <div class="flex justify-end space-x-3 mt-6">
+            <button type="button" id="close-reset-password" class="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">Cancel</button>
+            <button type="submit" class="px-4 py-2 bg-primary hover:bg-secondary text-white rounded-lg transition-colors">Reset</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    
+    <!-- Employee Form Modal -->
+    <div id="employee-form-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+      <div class="bg-white dark:bg-gray-800 p-6 rounded-lg max-w-md w-full">
+        <div class="flex justify-between items-start mb-4">
+          <h3 id="employee-form-title" class="text-xl font-bold">Add Employee</h3>
+          <button id="close-employee-form" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+        
+        <form id="employee-form" class="space-y-4">
+          <input type="hidden" id="employee-id">
+          
+          <div>
+            <label for="employee-username" class="block text-sm font-medium mb-1">Username</label>
+            <input
+              type="text"
+              id="employee-username"
+              name="employee-username"
+              class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-base focus:outline-none focus:ring-2 focus:ring-primary"
+              required
+            >
+          </div>
+          
+          <div>
+            <label for="employee-full-name" class="block text-sm font-medium mb-1">Full Name</label>
+            <input
+              type="text"
+              id="employee-full-name"
+              name="employee-full-name"
+              class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-base focus:outline-none focus:ring-2 focus:ring-primary"
+              required
+            >
+          </div>
+          
+          <div>
+            <label for="employee-password" class="block text-sm font-medium mb-1">Password</label>
+            <input
+              type="password"
+              id="employee-password"
+              name="employee-password"
+              class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-base focus:outline-none focus:ring-2 focus:ring-primary"
+              required
+            >
+          </div>
+          
+          <div>
+            <label for="employee-role" class="block text-sm font-medium mb-1">Role</label>
+            <select
+              id="employee-role"
+              name="employee-role"
+              class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-base focus:outline-none focus:ring-2 focus:ring-primary"
+              required
+            >
+              <option value="admin">Admin</option>
+              <option value="cashier">Cashier</option>
+            </select>
+          </div>
+          
+          <div id="employee-form-error" class="hidden text-red-500 text-sm"></div>
+          
+          <div class="flex justify-end space-x-3 mt-6">
+            <button
+              type="button"
+              id="cancel-employee-form"
+              class="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              class="px-4 py-2 bg-primary hover:bg-secondary text-white rounded-lg transition-colors"
+            >
+              Save
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Product Form Modal -->
+    <div id="product-form-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+      <div class="bg-white dark:bg-gray-800 p-6 rounded-lg max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <div class="flex justify-between items-start mb-4">
+          <h3 id="product-form-title" class="text-xl font-bold">Add Product</h3>
+          <button id="close-product-form" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+
+        <form id="product-form" class="space-y-4">
+          <input type="hidden" id="product-id" name="product-id">
+          <input type="hidden" id="original-product-name" name="original-product-name">
+
+          <div>
+            <label for="product-name" class="block text-sm font-medium mb-1">Name</label>
+            <input type="text" id="product-name" name="product-name" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-base focus:outline-none focus:ring-2 focus:ring-primary" required>
+          </div>
+
+          <div>
+            <label for="product-buy-price" class="block text-sm font-medium mb-1">Buy Price (Birr)</label>
+            <input type="number" id="product-buy-price" name="product-buy-price" step="0.01" min="0" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-base focus:outline-none focus:ring-2 focus:ring-primary" required>
+          </div>
+          
+          <div>
+            <label for="product-sale-price" class="block text-sm font-medium mb-1">Sale Price (Birr)</label>
+            <input type="number" id="product-sale-price" name="product-sale-price" step="0.01" min="0" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-base focus:outline-none focus:ring-2 focus:ring-primary" required>
+          </div>
+
+          <div>
+            <label for="product-tax" class="block text-sm font-medium mb-1">Tax (%)</label>
+            <input type="number" id="product-tax" name="product-tax" step="0.1" min="0" max="100" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-base focus:outline-none focus:ring-2 focus:ring-primary" required>
+          </div>
+          
+          <div>
+            <label for="product-quantity" class="block text-sm font-medium mb-1">Quantity</label>
+            <input type="number" id="product-quantity" name="product-quantity" min="0" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-base focus:outline-none focus:ring-2 focus:ring-primary" required value="10">
+          </div>
+
+          <div>
+            <label for="product-category" class="block text-sm font-medium mb-1">Category</label>
+            <input type="text" id="product-category" name="product-category" list="category-suggestions" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-base focus:outline-none focus:ring-2 focus:ring-primary" required>
+            <datalist id="category-suggestions">
+              <option value="fruits">
+              <option value="dairy">
+              <option value="bakery">
+            </datalist>
+          </div>
+
+          <div>
+            <label for="product-unit" class="block text-sm font-medium mb-1">Unit</label>
+            <input type="text" id="product-unit" name="product-unit" list="unit-suggestions" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-base focus:outline-none focus:ring-2 focus:ring-primary" required>
+            <datalist id="unit-suggestions"></datalist>
+          </div>
+          
+          <div>
+            <label for="product-image" class="block text-sm font-medium mb-1">Product Image</label>
+            <input type="file" id="product-image" name="product-image" accept="image/*" class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-base focus:outline-none focus:ring-2 focus:ring-primary">
+          </div>
+          
+          <div class="mt-2">
+            <div id="product-image-preview" class="hidden w-32 h-32 mx-auto bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center">
+              <img id="preview-img" class="max-w-full max-h-full object-contain" alt="Product preview">
+            </div>
+          </div>
+
+          <div id="product-form-error" class="hidden text-red-500 text-sm"></div>
+
+          <div class="flex justify-end space-x-3 mt-6">
+            <button type="button" id="cancel-product-form" class="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors">Cancel</button>
+            <button type="submit" class="px-4 py-2 bg-primary hover:bg-secondary text-white rounded-lg transition-colors">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // Check for dark mode preference
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.classList.add('dark');
+    }
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
+      if (event.matches) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    });
+    
+    // Load data from localStorage or use defaults
+    const loadFromLocalStorage = (key, defaultValue) => {
+      const storedData = localStorage.getItem(key);
+      return storedData ? JSON.parse(storedData) : defaultValue;
+    };
+    
+    // Save data to localStorage
+    const saveToLocalStorage = (key, data) => {
+      localStorage.setItem(key, JSON.stringify(data));
+    };
+    
+    // App configuration data
+    let appConfig = loadFromLocalStorage('pos_app_config', {
+      appTitle: 'SuperMarket POS',
+      companyName: 'SuperMarket',
+      companyAddress: '123 Market Street',
+      companyPhone: 'Tel: (123) 456-7890'
+    });
+    
+    // Profit tax limit
+    let profitTaxLimit = loadFromLocalStorage('pos_profit_tax_limit', null);
+
+    // Profit tax percentage (new variable)
+    let profitTaxPercentage = loadFromLocalStorage('pos_profit_tax_percentage', 2); // Default 2%
+    
+    // Employee data with new passwords
+    
+   // Employee data with new passwords
+    let employees = loadFromLocalStorage('pos_employees', [
+      { id: 1, username: 'admin', fullName: 'Admin User', password: 'Fent0940Pass', role: 'admin' },
+      { id: 2, username: 'cashier', fullName: 'Cashier User', password: 'Fent0910Pass', role: 'cashier' },
+    ]); 
+    
+    
+    // Sales history
+    let salesHistory = loadFromLocalStorage('pos_sales', []);
+    
+    // Daily sales tracking (new day starts at 12:00 a.m. Ethiopian time, UTC+3)
+    let dailySales = loadFromLocalStorage('pos_daily_sales', {});
+    
+    // Product data - with buyPrice, salePrice, and tax
+    let products = loadFromLocalStorage('pos_products', [
+      { id: 1, name: 'Apple', buyPrice: 0.99, salePrice: 1.49, tax: 15, category: 'fruits', image: generateFruitImage('🍎'), quantity: 4, unit: 'pcs' },
+      { id: 2, name: 'Banana', buyPrice: 0.49, salePrice: 0.99, tax: 15, category: 'fruits', image: generateFruitImage('🍌'), quantity: 4, unit: 'pcs' },
+      { id: 3, name: 'Orange', buyPrice: 0.79, salePrice: 1.29, tax: 15, category: 'fruits', image: generateFruitImage('🍊'), quantity: 4, unit: 'pcs' },
+      { id: 4, name: 'Milk', buyPrice: 2.49, salePrice: 3.49, tax: 15, category: 'dairy', image: generateProductImage('🥛'), quantity: 4, unit: 'liter' },
+      { id: 5, name: 'Cheese', buyPrice: 3.49, salePrice: 4.99, tax: 15, category: 'dairy', image: generateProductImage('🧀'), quantity: 4, unit: 'kg' },
+      { id: 6, name: 'Yogurt', buyPrice: 1.69, salePrice: 2.49, tax: 15, category: 'dairy', image: generateProductImage('🥄'), quantity: 4, unit: 'pcs' },
+      { id: 7, name: 'Bread', buyPrice: 1.99, salePrice: 2.99, tax: 15, category: 'bakery', image: generateProductImage('🍞'), quantity: 4, unit: 'pcs' },
+      { id: 8, name: 'Croissant', buyPrice: 1.29, salePrice: 1.99, tax: 15, category: 'bakery', image: generateProductImage('🥐'), quantity: 4, unit: 'pcs' },
+      { id: 9, name: 'Cake', buyPrice: 8.99, salePrice: 12.99, tax: 15, category: 'bakery', image: generateProductImage('🍰'), quantity: 4, unit: 'pcs' }
+    ]);
+
+    // Product tracking for admin panel - track original quantities and sold amounts
+    let productTracking = loadFromLocalStorage('pos_product_tracking', {});
+    
+    // Available units for product form datalist
+    let units = loadFromLocalStorage('pos_units', ['pcs', 'kg', 'liter', 'g', 'ml', 'dozen', 'pack', 'bottle']);
+
+
+    // Initialize product tracking if it doesn't exist or update with new properties
+    products.forEach(product => {
+      if (!productTracking[product.id]) {
+        productTracking[product.id] = {
+          productName: product.name,
+          originalQuantity: product.quantity,
+          soldQuantity: 0,
+          totalSoldAmount: 0,
+          totalProfit: 0,
+          image: product.image,
+          unit: product.unit // NEW: Add unit to tracking
+        };
+      } else {
+        // Ensure unit is present in existing tracking entries
+        if (productTracking[product.id].unit === undefined) {
+          productTracking[product.id].unit = product.unit;
+        }
+      }
+    });
+
+    // Update app title elements
+    function updateAppTitle() {
+      document.getElementById('app-title').textContent = appConfig.appTitle;
+      document.getElementById('main-app-title').textContent = appConfig.appTitle;
+      document.title = appConfig.appTitle;
+    }
+
+    // Update receipt information
+    function updateReceiptInfo() {
+      document.getElementById('receipt-company-name').textContent = appConfig.companyName;
+      document.getElementById('receipt-address').textContent = appConfig.companyAddress;
+      document.getElementById('receipt-phone').textContent = appConfig.companyPhone;
+    }
+
+    // Calculate total profit tax (using dynamic percentage)
+    function calculateTotalProfitTax() {
+      let totalProfit = 0;
+      
+      // Calculate total profit from sales history
+      salesHistory.forEach(sale => {
+        sale.items.forEach(item => {
+          const itemProfit = (item.price - (item.buyPrice || 0)) * item.quantity;
+          totalProfit += itemProfit;
+        });
+      });
+      
+      return totalProfit * (profitTaxPercentage / 100); // Use dynamic profitTaxPercentage
+    }
+
+    // Update profit tax display
+    function updateProfitTaxDisplay() {
+      const profitTax = calculateTotalProfitTax();
+      document.getElementById('profit-tax-amount').textContent = formatPrice(profitTax);
+      
+      // Update profit limit display
+      const limitDisplay = document.getElementById('current-profit-limit');
+      if (profitTaxLimit !== null) {
+        limitDisplay.textContent = formatPrice(profitTaxLimit);
+      } else {
+        limitDisplay.textContent = 'No limit set';
+      }
+    }
+
+    // Check if profit tax limit is reached
+    function isProfitTaxLimitReached() {
+      if (profitTaxLimit === null) return false;
+      const currentProfitTax = calculateTotalProfitTax();
+      return currentProfitTax >= profitTaxLimit;
+    }
+
+function formatPrice(price) {
+  return `${(price || 0).toFixed(2)} Birr`; // Ensure price is not null
+}
+
+ // Get current business day (starts at 12:00 a.m. Ethiopian time, UTC+3)
+function getCurrentBusinessDay() {
+  const now = new Date();
+  // Convert to UTC+3 (Ethiopian time)
+  const ethiopianTime = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+  return ethiopianTime.toISOString().split('T')[0];
+}
+  
+    // Update daily sales when a product is sold
+    function updateDailySales(productId, productName, quantity, totalAmount, seller, unit) { // Added 'unit' parameter
+      const businessDay = getCurrentBusinessDay();
+      
+      if (!dailySales[businessDay]) {
+        dailySales[businessDay] = {};
+      }
+      
+      if (!dailySales[businessDay][productId]) {
+        // This is the first time this product is sold today.
+        // Get the current product's quantity from the main 'products' array.
+        // This 'product.quantity' reflects the stock *after* this sale,
+        // so to get the quantity *before* this sale, we add 'quantity'.
+        const productInMasterList = products.find(p => p.id === productId);
+        const initialQuantityForDay = productInMasterList ? productInMasterList.quantity + quantity : quantity;
+
+        dailySales[businessDay][productId] = {
+          productName: productName,
+          initialQuantity: initialQuantityForDay, // Quantity at the start of the day for this product (or when first sold)
+          soldQuantity: 0,
+          totalSoldAmount: 0,
+          sellers: {},
+          unit: unit || 'pcs' // Store unit for daily sales display
+        };
+      }
+
+      dailySales[businessDay][productId].soldQuantity += quantity;
+      dailySales[businessDay][productId].totalSoldAmount += totalAmount;
+
+      // Track seller information
+      if (!dailySales[businessDay][productId].sellers[seller]) {
+        dailySales[businessDay][productId].sellers[seller] = {
+          quantity: 0,
+          amount: 0
+        };
+      }
+
+      dailySales[businessDay][productId].sellers[seller].quantity += quantity;
+      dailySales[businessDay][productId].sellers[seller].amount += totalAmount;
+
+      saveToLocalStorage('pos_daily_sales', dailySales);
+    }
+
+    // Update product tracking when product is sold
+    function updateProductTracking(productId, productName, quantity, totalAmount, profit, image, unit) { // Added 'unit' parameter
+      if (!productTracking[productId]) {
+        productTracking[productId] = {
+          productName: productName,
+          originalQuantity: 0,
+          soldQuantity: 0,
+          totalSoldAmount: 0,
+          totalProfit: 0,
+          image: image,
+          unit: unit || 'pcs' // Store unit for product tracking display
+        };
+      }
+      
+      productTracking[productId].soldQuantity += quantity;
+      productTracking[productId].totalSoldAmount += totalAmount;
+      productTracking[productId].totalProfit += profit;
+      productTracking[productId].productName = productName; // Update name in case it changed
+      productTracking[productId].image = image; // Update image in case it changed
+      productTracking[productId].unit = unit; // Update unit in case it changed
+      
+      saveToLocalStorage('pos_product_tracking', productTracking);
+    }
+
+    // Clean up product tracking when product is deleted
+    function removeProductTracking(productId) {
+      if (productTracking[productId]) {
+        delete productTracking[productId];
+        saveToLocalStorage('pos_product_tracking', productTracking);
+      }
+      
+      // Also remove from daily sales
+      Object.keys(dailySales).forEach(day => {
+        if (dailySales[day][productId]) {
+          delete dailySales[day][productId];
+        }
+      });
+      saveToLocalStorage('pos_daily_sales', dailySales);
+    }
+
+    // Show daily sales modal with seller information
+    function showDailySales() {
+      const content = document.getElementById('daily-sales-content');
+      content.innerHTML = '';
+      
+      if (Object.keys(dailySales).length === 0) {
+        content.innerHTML = '<p class="text-center text-gray-500 dark:text-gray-400">No daily sales data available yet.</p>';
+      } else {
+        // Sort days in descending order (most recent first)
+        const sortedDays = Object.keys(dailySales).sort((a, b) => new Date(b) - new Date(a));
+        
+        sortedDays.forEach((day, index) => {
+          const dayData = dailySales[day];
+          const dayDate = new Date(day);
+          const dayName = dayDate.toLocaleDateString('en-US', { 
+            weekday: 'long', 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+          });
+          
+          let totalDailySales = 0;
+          let tableRows = '';
+          
+          Object.values(dayData).forEach(productData => {
+            if (productData.soldQuantity > 0) {
+              totalDailySales += productData.totalSoldAmount;
+              
+              // Generate seller information
+              let sellerInfo = '';
+              if (productData.sellers) {
+                const sellerEntries = Object.entries(productData.sellers);
+                sellerInfo = sellerEntries.map(([seller, data]) => 
+                  `${seller} (${data.quantity} ${productData.unit || 'pcs'})` // Display unit here
+                ).join(', ');
+              }
+              
+              tableRows += `
+                <tr class="border-b border-gray-200 dark:border-gray-700">
+                  <td class="py-2 px-4">${productData.productName}</td>
+                  <td class="py-2 px-4">${productData.initialQuantity} ${productData.unit || 'pcs'}</td>
+                  <td class="py-2 px-4">${productData.soldQuantity} ${productData.unit || 'pcs'}</td>
+                  <td class="py-2 px-4">${formatPrice(productData.totalSoldAmount)}</td>
+                  <td class="py-2 px-4 text-sm">${sellerInfo || 'N/A'}</td>
+                </tr>
+              `;
+            }
+          });
+          
+          if (tableRows) {
+            const daySection = `
+              <div class="mb-8 ${index > 0 ? 'border-t border-gray-300 dark:border-gray-600 pt-6' : ''}">
+                <h4 class="text-xl font-bold text-primary dark:text-secondary mb-4">
+                  Sales History - ${dayName}
+                </h4>
+                <div class="overflow-x-auto">
+                  <table class="min-w-full bg-white dark:bg-gray-800 rounded-lg overflow-hidden shadow-md">
+                    <thead class="bg-gray-100 dark:bg-gray-700">
+                      <tr>
+                        <th class="py-3 px-4 text-left font-semibold">Product</th>
+                        <th class="py-3 px-4 text-left font-semibold">Original Qty</th>
+                        <th class="py-3 px-4 text-left font-semibold">Quantity Sold</th>
+                        <th class="py-3 px-4 text-left font-semibold">Total Sold (Birr)</th>
+                        <th class="py-3 px-4 text-left font-semibold">Seller</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${tableRows}
+                    </tbody>
+                  </table>
+                </div>
+                <div class="mt-4 text-right">
+                  <div class="bg-primary/10 dark:bg-primary/20 p-4 rounded-lg inline-block">
+                    <span class="text-lg font-bold text-primary dark:text-secondary">
+                      Total Daily Sales: ${formatPrice(totalDailySales)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            `;
+            content.innerHTML += daySection;
+          }
+        });
+        
+        if (content.innerHTML === '') {
+          content.innerHTML = '<p class="text-center text-gray-500 dark:text-gray-400">No sales recorded for any day yet.</p>';
+        }
+      }
+      
+      document.getElementById('daily-sales-modal').classList.remove('hidden');
+    }
+
+    // Generate base64 encoded images for products
+    function generateFruitImage(emoji) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 100;
+      canvas.height = 100;
+      const ctx = canvas.getContext('2d');
+      
+      // Background
+      ctx.fillStyle = '#f3f4f6';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Emoji
+      ctx.font = '70px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(emoji, canvas.width/2, canvas.height/2);
+      
+      return canvas.toDataURL();
+    }
+
+    function generateProductImage(emoji) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 100;
+      canvas.height = 100;
+      const ctx = canvas.getContext('2d');
+      
+      // Background
+      ctx.fillStyle = '#e5e7eb';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Emoji
+      ctx.font = '70px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(emoji, canvas.width/2, canvas.height/2);
+      
+      return canvas.toDataURL();
+    }
+
+    // Shopping cart
+    let cart = [];
+    
+    function displayProducts(productsToDisplay) {
+      const productsGrid = document.getElementById('products-grid');
+      productsGrid.innerHTML = '';
+
+      productsToDisplay.forEach(product => {
+        const productCard = document.createElement('div');
+        productCard.className = 'item-card bg-white dark:bg-gray-800 rounded-lg overflow-hidden shadow-md';
+        
+        // Determine button class based on quantity and profit limit
+        let buttonClass, buttonText, isDisabled;
+        
+        if (product.quantity <= 0) {
+          buttonClass = 'bg-red-500 hover:bg-red-600 opacity-50 cursor-not-allowed';
+          buttonText = 'Out of Stock';
+          isDisabled = true;
+        } else if (isProfitTaxLimitReached()) {
+          buttonClass = 'bg-red-500 hover:bg-red-600 opacity-50 cursor-not-allowed';
+          buttonText = 'Limit Reached';
+          isDisabled = true;
+        } else {
+          buttonClass = 'bg-green-500 hover:bg-green-600';
+          buttonText = 'Sell';
+          isDisabled = false;
+        }
+
+        // Check if the product is currently in the cart to apply 'selling-active' class
+        const isInCart = cart.some(item => item.product.id === product.id);
+        if (isInCart && !isDisabled) { // Only apply if not already disabled by stock/limit
+            buttonClass += ' selling-active';
+        }
+        
+        productCard.innerHTML = `
+          <img src="${product.image}" alt="${product.name}" class="w-full h-32 object-contain bg-gray-100 dark:bg-gray-700">
+          <div class="p-4">
+            <h3 class="font-semibold">${product.name}</h3>
+            <p>Quantity: <span class="font-bold">${product.quantity} ${product.unit || 'pcs'}</span></p>
+            <div class="flex justify-between items-center mt-2">
+              <span class="text-primary dark:text-secondary font-bold">${formatPrice(product.salePrice)}</span>
+              <button class="sell-btn ${buttonClass} text-white py-1 px-3 rounded-full text-sm transition-colors" 
+                data-id="${product.id}" ${isDisabled ? 'disabled' : ''}>
+                ${buttonText}
+              </button>
+            </div>
+          </div>
+        `;
+        
+        productsGrid.appendChild(productCard);
+      });
+    
+      // Add event listeners to "Sell" buttons
+      document.querySelectorAll('.sell-btn').forEach(button => {
+        if (!button.disabled) {
+          button.addEventListener('click', () => {
+            const productId = parseInt(button.getAttribute('data-id'));
+            addToCart(productId);
+          });
+        } else {
+          button.addEventListener('click', () => {
+            if (isProfitTaxLimitReached()) {
+              alert('Profit tax limit reached! Call 0910167348');
+            }
+          });
+        }
+      });
+    }
+
+    // Add product to cart
+    function addToCart(productId) {
+      const product = products.find(p => p.id === productId);
+      if (!product || product.quantity <= 0) return;
+      
+      // Check profit tax limit
+      if (isProfitTaxLimitReached()) {
+        alert('Profit tax limit reached! Call 0910167348');
+        return;
+      }
+      
+      // Check if product is already in cart
+      const existingItem = cart.find(item => item.product.id === productId);
+      
+      // Find the corresponding sell button
+      const sellButton = document.querySelector(`.sell-btn[data-id="${productId}"]`);
+
+      if (existingItem) {
+        if (existingItem.quantity < product.quantity) {
+          existingItem.quantity++;
+          updateCartItemQuantity(existingItem);
+          if (sellButton) {
+              sellButton.classList.add('selling-active'); // Add active class
+          }
+        } else {
+          alert("Sorry, we don't have enough stock for this item.");
+          return;
+        }
+      } else {
+        const cartItem = { product, quantity: 1 };
+        cart.push(cartItem);
+        addCartItemToDOM(cartItem);
+        if (sellButton) {
+            sellButton.classList.add('selling-active'); // Add active class
+        }
+      }
+      
+      updateCartTotals();
+      
+      // Add animation class
+      const cartItemElement = document.querySelector(`.cart-item[data-id="${productId}"]`);
+      if (cartItemElement) { // Ensure element exists before adding class
+        cartItemElement.classList.add('cart-item-enter');
+        setTimeout(() => {
+          cartItemElement.classList.remove('cart-item-enter');
+        }, 300);
+      }
+    }
+
+    // Add cart item to DOM
+    function addCartItemToDOM(cartItem) {
+      const cartItemsContainer = document.getElementById('cart-items');
+      const emptyCartMessage = document.getElementById('empty-cart-message');
+      
+      if (emptyCartMessage) {
+        emptyCartMessage.style.display = 'none';
+      }
+      
+      const cartItemElement = document.createElement('div');
+      cartItemElement.className = 'cart-item flex items-center justify-between py-2 border-b border-gray-200 dark:border-gray-700';
+      cartItemElement.setAttribute('data-id', cartItem.product.id);
+      
+      cartItemElement.innerHTML = `
+        <div class="flex items-center">
+          <img src="${cartItem.product.image}" alt="${cartItem.product.name}" class="w-10 h-10 object-contain bg-gray-100 dark:bg-gray-700 rounded">
+          <div class="ml-3">
+            <h4 class="font-medium">${cartItem.product.name}</h4>
+            <p class="text-gray-500 dark:text-gray-400 text-sm">${formatPrice(cartItem.product.salePrice)} each</p>
+          </div>
+        </div>
+        <div class="flex items-center">
+          <button class="decrement-btn text-gray-500 hover:text-red-500 dark:text-gray-400" data-id="${cartItem.product.id}">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"></path>
+            </svg>
+          </button>
+          <span class="quantity-display mx-2">${cartItem.quantity} ${cartItem.product.unit || 'pcs'}</span>
+          <button class="increment-btn text-gray-500 hover:text-green-500 dark:text-gray-400" data-id="${cartItem.product.id}">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v12m6-6H6"></path>
+            </svg>
+          </button>
+          <button class="remove-btn ml-3 text-gray-500 hover:text-red-500 dark:text-gray-400" data-id="${cartItem.product.id}">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+            </svg>
+          </button>
+        </div>
+      `;
+      
+      cartItemsContainer.appendChild(cartItemElement);
+      
+      // Add event listeners
+      cartItemElement.querySelector('.decrement-btn').addEventListener('click', () => decrementCartItem(cartItem.product.id));
+      cartItemElement.querySelector('.increment-btn').addEventListener('click', () => incrementCartItem(cartItem.product.id));
+      cartItemElement.querySelector('.remove-btn').addEventListener('click', () => removeFromCart(cartItem.product.id));
+      
+      // Enable checkout button if cart is not empty
+      document.getElementById('checkout-btn').disabled = false;
+    }
+
+    // Update cart item quantity in DOM
+    function updateCartItemQuantity(cartItem) {
+      const cartItemElement = document.querySelector(`.cart-item[data-id="${cartItem.product.id}"]`);
+      if (cartItemElement) {
+        cartItemElement.querySelector('.quantity-display').textContent = `${cartItem.quantity} ${cartItem.product.unit || 'pcs'}`;
+      }
+    }
+
+    // Increment cart item quantity
+    function incrementCartItem(productId) {
+      const cartItem = cart.find(item => item.product.id === productId);
+      const product = products.find(p => p.id === productId);
+      
+      if (cartItem && product) {
+        if (cartItem.quantity < product.quantity) {
+          cartItem.quantity++;
+          updateCartItemQuantity(cartItem);
+          updateCartTotals();
+        } else {
+          alert("Sorry, we don't have enough stock for this item.");
+        }
+      }
+    }
+
+    // Decrement cart item quantity
+    function decrementCartItem(productId) {
+      const cartItem = cart.find(item => item.product.id === productId);
+      if (cartItem) {
+        if (cartItem.quantity > 1) {
+          cartItem.quantity--;
+          updateCartItemQuantity(cartItem);
+        } else {
+          removeFromCart(productId);
+        }
+        updateCartTotals();
+      }
+    }
+
+    // Remove item from cart
+    function removeFromCart(productId) {
+      cart = cart.filter(item => item.product.id !== productId);
+      
+      // Remove from DOM
+      const cartItemElement = document.querySelector(`.cart-item[data-id="${productId}"]`);
+      if (cartItemElement) {
+        cartItemElement.remove();
+      }
+      
+      // NEW: Remove 'selling-active' class from the corresponding product button
+      const sellButton = document.querySelector(`.sell-btn[data-id="${productId}"]`);
+      if (sellButton) {
+          sellButton.classList.remove('selling-active');
+      }
+
+      // Show empty cart message if cart is empty
+      if (cart.length === 0) {
+        document.getElementById('empty-cart-message').style.display = 'block';
+        document.getElementById('checkout-btn').disabled = true;
+      }
+      
+      updateCartTotals();
+    }
+
+    // Update cart totals
+    function updateCartTotals() {
+      // Calculate subtotal
+      const subtotal = cart.reduce((total, item) => total + (item.product.salePrice * item.quantity), 0);
+      
+      // Calculate tax based on each product's tax rate
+      const tax = cart.reduce((total, item) => {
+        const productTax = (item.product.salePrice * item.quantity) * (item.product.tax / 100);
+        return total + productTax;
+      }, 0);
+      
+      const total = subtotal + tax;
+      
+      document.getElementById('subtotal').textContent = formatPrice(subtotal);
+      document.getElementById('tax').textContent = formatPrice(tax);
+      document.getElementById('total').textContent = formatPrice(total);
+      
+      // Update profit tax display
+      updateProfitTaxDisplay();
+    }
+
+    // Get all unique categories from products
+    function getAllCategories() {
+      const categories = new Set(products.map(p => p.category));
+      return ['all', ...Array.from(categories)];
+    }
+
+    // Filter products by category
+    function filterByCategory(category) {
+      const filteredProducts = category === 'all' ? 
+        products : 
+        products.filter(product => product.category === category);
+      
+      displayProducts(filteredProducts);
+      
+      // Update active category button
+      document.querySelectorAll('.category-btn').forEach(button => {
+        button.classList.remove('bg-primary', 'text-white');
+        button.classList.add('bg-gray-200', 'dark:bg-gray-800');
+      });
+      
+      // Try to find the specific category button
+      const categoryBtn = document.getElementById(`category-${category}`);
+      if (categoryBtn) {
+        categoryBtn.classList.remove('bg-gray-200', 'dark:bg-gray-800');
+        categoryBtn.classList.add('bg-primary', 'text-white');
+      } else if (category !== 'all') {
+        // If the category doesn't have a specific button, keep 'All' selected
+        document.getElementById('category-all').classList.remove('bg-gray-200', 'dark:bg-gray-800');
+        document.getElementById('category-all').classList.add('bg-primary', 'text-white');
+      }
+    }
+
+    // Search products
+    function searchProducts(query) {
+      if (!query.trim()) {
+        const activeCategoryBtn = document.querySelector('.category-btn.bg-primary');
+        const activeCategory = activeCategoryBtn ? activeCategoryBtn.id.replace('category-', '') : 'all';
+        filterByCategory(activeCategory);
+        return;
+      }
+      
+      const searchResults = products.filter(product => 
+        product.name.toLowerCase().includes(query.toLowerCase())
+      );
+      
+      displayProducts(searchResults);
+    }
+
+    // Current logged in user
+    let currentUser = null;
+    
+    // Authentication Functions
+    function authenticateUser(username, password) {
+      const user = employees.find(emp => 
+        emp.username.toLowerCase() === username.toLowerCase() && 
+        emp.password === password
+      );
+      
+      return user || null;
+    }
+    
+    function login(username, password) {
+      const user = authenticateUser(username, password);
+      
+      if (user) {
+        currentUser = user;
+        document.getElementById('user-name').textContent = user.fullName;
+        document.getElementById('user-role').textContent = user.role.charAt(0).toUpperCase() + user.role.slice(1);
+        
+        // Hide all role-specific buttons initially
+        document.getElementById('admin-panel-btn').classList.add('hidden');
+        document.getElementById('super-admin-btn').classList.add('hidden');
+        document.getElementById('add-product-header-btn').classList.add('hidden');
+
+        // Show buttons based on role
+        if (user.role === 'admin') {
+          document.getElementById('admin-panel-btn').classList.remove('hidden');
+          document.getElementById('super-admin-btn').classList.remove('hidden');
+          // Admin does NOT see "Add Product" button in header (as per user request)
+        } 
+           
+        // Hide login screen, show main app
+        document.getElementById('login-screen').classList.add('hidden');
+        document.getElementById('main-app').classList.remove('hidden');
+        
+        // Update profit tax display
+        updateProfitTaxDisplay();
+        
+        return true;
+      }
+      
+      return false;
+    }
+    
+    function logout() {
+      currentUser = null;
+      
+      // Clear cart
+      cart = [];
+      document.getElementById('cart-items').innerHTML = '<p id="empty-cart-message" class="text-gray-500 dark:text-gray-400 text-center py-4">Your cart is empty</p>';
+      document.getElementById('checkout-btn').disabled = true;
+      updateCartTotals();
+      
+      // Re-render products to reset sell button colors
+      filterByCategory('all'); 
+
+      // Show login screen, hide main app
+      document.getElementById('login-screen').classList.remove('hidden');
+      document.getElementById('main-app').classList.add('hidden');
+      
+      // Clear login form
+      document.getElementById('username').value = '';
+      document.getElementById('password').value = '';
+      document.getElementById('login-error').classList.add('hidden');
+    }
+    
+    // Calculate all products with profit information for admin panel
+    function calculateAllProductsByProfit() {
+      const productStats = [];
+      
+      // Use product tracking data for accurate information
+      Object.keys(productTracking).forEach(productId => {
+        const trackingData = productTracking[productId];
+        const currentProduct = products.find(p => p.id === parseInt(productId));
+        
+        if (currentProduct) {
+          // Product still exists - use current quantity + sold quantity for original
+          productStats.push({
+            productId: parseInt(productId),
+            productName: currentProduct.name,
+            originalQuantity: currentProduct.quantity + trackingData.soldQuantity,
+            soldQuantity: trackingData.soldQuantity,
+            totalProfit: trackingData.totalProfit,
+            image: currentProduct.image,
+            unit: currentProduct.unit // Include unit
+          });
+        }
+      });
+      
+      // Add products that haven't been sold yet (not in tracking)
+      products.forEach(product => {
+        if (!productTracking[product.id]) {
+          productStats.push({
+            productId: product.id,
+            productName: product.name,
+            originalQuantity: product.quantity,
+            soldQuantity: 0,
+            totalProfit: 0,
+            image: product.image,
+            unit: product.unit // Include unit
+          });
+        }
+      });
+      
+      // Sort by profit (highest first)
+      return productStats.sort((a, b) => b.totalProfit - a.totalProfit);
+    }
+    
+    // Super Admin Functions
+    function showSuperAdminPasswordPrompt() {
+      document.getElementById('super-admin-password-modal').classList.remove('hidden');
+      document.getElementById('super-admin-password').value = '';
+      document.getElementById('super-admin-password-error').classList.add('hidden');
+    }
+    
+    function showSuperAdminPanel() {
+      // Populate form with current values
+      document.getElementById('app-title-input').value = appConfig.appTitle;
+      document.getElementById('company-name-input').value = appConfig.companyName;
+      document.getElementById('company-address-input').value = appConfig.companyAddress;
+      document.getElementById('company-phone-input').value = appConfig.companyPhone;
+      
+      // Update the profit tax button text
+      updateProfitTaxButtonText();
+
+      document.getElementById('super-admin-modal').classList.remove('hidden');
+    }
+    
+    function resetSalesHistory() {
+      if (confirm('Are you sure you want to permanently delete all sales history? This action cannot be undone.')) {
+        if (confirm('This will delete ALL sales data. Are you absolutely sure?')) {
+          salesHistory = [];
+          productTracking = {};
+          dailySales = {};
+          
+          // Reinitialize product tracking for current products
+          products.forEach(product => {
+            productTracking[product.id] = {
+              productName: product.name,
+              originalQuantity: product.quantity,
+              soldQuantity: 0,
+              totalSoldAmount: 0,
+              totalProfit: 0,
+              image: product.image,
+              unit: product.unit // Include unit
+            };
+          });
+          
+          // Save to localStorage
+          saveToLocalStorage('pos_sales', salesHistory);
+          saveToLocalStorage('pos_product_tracking', productTracking);
+          saveToLocalStorage('pos_daily_sales', dailySales);
+          
+          // Update displays
+          updateProfitTaxDisplay();
+          
+          alert('Sales history has been reset.');
+        }
+      }
+    }
+    
+    function saveAppInfo(event) {
+      event.preventDefault();
+      
+      appConfig.appTitle = document.getElementById('app-title-input').value;
+      appConfig.companyName = document.getElementById('company-name-input').value;
+      appConfig.companyAddress = document.getElementById('company-address-input').value;
+      appConfig.companyPhone = document.getElementById('company-phone-input').value;
+      
+      saveToLocalStorage('pos_app_config', appConfig);
+      
+      // Update UI elements
+      updateAppTitle();
+      updateReceiptInfo();
+      
+      alert('App information updated successfully!');
+    }
+
+    // Function to update the profit tax button text
+    function updateProfitTaxButtonText() {
+        document.getElementById('edit-profit-tax-btn').textContent = `Edit Profit Tax Percentage (${profitTaxPercentage}%)`;
+    }
+    
+    // Admin Panel Functions
+    function showAdminPanel() {
+      if (currentUser && currentUser.role === 'admin') {
+        populateEmployeesTable();
+        populateProductsTable();
+        updateSalesHistory();
+        populateTopProductsAdmin();
+        populateProductHistory();
+        document.getElementById('admin-panel-modal').classList.remove('hidden');
+      }
+    }
+    
+    function populateEmployeesTable() {
+      const tableBody = document.getElementById('employees-table-body');
+      tableBody.innerHTML = '';
+      
+      employees.forEach(employee => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td class="py-2 px-4">${employee.username}</td>
+          <td class="py-2 px-4">${employee.fullName}</td>
+          <td class="py-2 px-4">${employee.role.charAt(0).toUpperCase() + employee.role.slice(1)}</td>
+          <td class="py-2 px-4">
+            <div class="flex space-x-2">
+              <button class="edit-employee-btn text-primary dark:text-secondary hover:text-secondary" data-id="${employee.id}">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                </svg>
+              </button>
+              <button class="reset-password-btn text-blue-500 hover:text-blue-700" data-id="${employee.id}">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
+                </svg>
+              </button>
+              <button class="delete-employee-btn text-red-500 hover:text-red-700" data-id="${employee.id}" ${employee.id === currentUser.id ? 'disabled' : ''}>
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                </svg>
+              </button>
+            </div>
+          </td>
+        `;
+        
+        // Disable delete button for current user
+        if (currentUser && employee.id === currentUser.id) {
+          const deleteBtn = row.querySelector('.delete-employee-btn');
+          if (deleteBtn) { // Check if button exists before modifying
+            deleteBtn.classList.add('opacity-50', 'cursor-not-allowed');
+          }
+        }
+        
+        tableBody.appendChild(row);
+      });
+      
+      // Add event listeners for edit and delete buttons
+      document.querySelectorAll('.edit-employee-btn').forEach(button => {
+        button.addEventListener('click', () => {
+          const employeeId = parseInt(button.getAttribute('data-id'));
+          editEmployee(employeeId);
+        });
+      });
+      
+      document.querySelectorAll('.delete-employee-btn').forEach(button => {
+        button.addEventListener('click', () => {
+          const employeeId = parseInt(button.getAttribute('data-id'));
+          deleteEmployee(employeeId);
+        });
+      });
+      
+      // Add event listeners for reset password buttons
+      document.querySelectorAll('.reset-password-btn').forEach(button => {
+        button.addEventListener('click', () => {
+          const employeeId = parseInt(button.getAttribute('data-id'));
+          showResetPasswordModal(employeeId);
+        });
+      });
+    }
+    
+    // Function to show reset password modal
+    function showResetPasswordModal(employeeId) {
+      const employee = employees.find(emp => emp.id === employeeId);
+      if (!employee) return;
+      
+      document.getElementById('reset-employee-id').value = employeeId;
+      document.getElementById('new-password').value = '';
+      document.getElementById('reset-password-modal').classList.remove('hidden');
+    }
+    
+    function populateProductsTable() {
+      const tableBody = document.getElementById('products-table-body');
+      tableBody.innerHTML = '';
+      
+      products.forEach(product => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td class="py-2 px-4">${product.id}</td>
+          <td class="py-2 px-4 flex items-center">
+            <img src="${product.image}" alt="${product.name}" class="w-8 h-8 mr-2 object-contain bg-gray-100 dark:bg-gray-700 rounded">
+            ${product.name}
+          </td>
+          <td class="py-2 px-4">${formatPrice(product.buyPrice)}</td>
+          <td class="py-2 px-4">${formatPrice(product.salePrice)}</td>
+          <td class="py-2 px-4">${product.tax}%</td>
+          <td class="py-2 px-4">${product.quantity}</td>
+          <td class="py-2 px-4">${product.category.charAt(0).toUpperCase() + product.category.slice(1)}</td>
+          <td class="py-2 px-4">${product.unit || 'pcs'}</td>
+          <td class="py-2 px-4">
+            <div class="flex space-x-2">
+              <button class="edit-product-btn text-primary dark:text-secondary hover:text-secondary" data-id="${product.id}">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                </svg>
+              </button>
+              <button class="delete-product-btn text-red-500 hover:text-red-700" data-id="${product.id}">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                </svg>
+              </button>
+            </div>
+          </td>
+        `;
+        
+        tableBody.appendChild(row);
+      });
+      
+      // Add event listeners for edit and delete buttons
+      document.querySelectorAll('.edit-product-btn').forEach(button => {
+        button.addEventListener('click', () => {
+          const productId = parseInt(button.getAttribute('data-id'));
+          editProduct(productId);
+        });
+      });
+      
+      document.querySelectorAll('.delete-product-btn').forEach(button => {
+        button.addEventListener('click', () => {
+          const productId = parseInt(button.getAttribute('data-id'));
+          deleteProduct(productId);
+        });
+      });
+    }
+    
+    function updateSalesHistory() {
+      const salesHistoryContent = document.getElementById('sales-history-content');
+      
+      if (salesHistory.length === 0) {
+        salesHistoryContent.innerHTML = '<p class="text-center text-gray-500 dark:text-gray-400">No sales data available yet.</p>';
+        return;
+      }
+      
+      let salesHtml = '';
+      let totalSalesAmount = 0;
+      let totalProfitAmount = 0;
+
+      salesHistory.forEach((sale, index) => {
+        const saleDate = new Date(sale.date);
+        const dateOptions = { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+        
+        // Calculate profit for this sale
+        let saleProfit = 0;
+        sale.items.forEach(item => {
+          const itemProfit = (item.price - (item.buyPrice || 0)) * item.quantity;
+          saleProfit += itemProfit;
+        });
+        
+        // Add to totals
+        totalSalesAmount += sale.total;
+        totalProfitAmount += saleProfit;
+
+        salesHtml += `
+          <div class="mb-6 pb-6 ${index < salesHistory.length - 1 ? 'border-b border-gray-200 dark:border-gray-700' : ''}">
+            <div class="flex justify-between items-start mb-2">
+              <div>
+                <span class="font-semibold">Sale #${sale.id}</span>
+                <span class="text-sm text-gray-500 dark:text-gray-400 ml-2">${saleDate.toLocaleDateString('en-US', dateOptions)}</span>
+              </div>
+              <div class="text-right">
+                <div class="font-bold">${formatPrice(sale.total)}</div>
+                <div class="text-sm text-green-600 dark:text-green-400">Profit: ${formatPrice(saleProfit)}</div>
+              </div>
+            </div>
+            <div class="text-sm">
+              <p class="text-gray-500 dark:text-gray-400">Cashier: ${sale.cashier}</p>
+              <p class="text-gray-500 dark:text-gray-400">
+                Items:<br>
+                ${sale.items.map(item => `${item.productName} × ${item.quantity} ${item.unit || 'pcs'} / ${formatPrice(item.price)} each`).join('<br>')}
+              </p>
+            </div>
+          </div>
+        `;
+      });
+      
+      const totalProfitTax = totalProfitAmount * (profitTaxPercentage / 100); // Use dynamic percentage
+      
+      salesHtml += `
+        <div class="border-t border-gray-200 dark:border-gray-700 pt-4 mt-2">
+          <div class="flex justify-between text-lg font-bold">
+            <span>Total Sales:</span>
+            <span>${formatPrice(totalSalesAmount)}</span>
+          </div>
+          <div class="flex justify-between text-green-600 dark:text-green-400 font-bold">
+            <span>Total Profit:</span>
+            <span>${formatPrice(totalProfitAmount)}</span>
+          </div>
+          <div class="flex justify-between text-orange-600 dark:text-orange-400 font-bold">
+            <span>Total Profit Tax (${profitTaxPercentage}%):</span>
+            <span>${formatPrice(totalProfitTax)}</span>
+          </div>
+        </div>
+      `;
+
+      salesHistoryContent.innerHTML = salesHtml;
+    }
+    
+    // Function to populate all products ordered by profit in admin panel
+    function populateTopProductsAdmin() {
+      const allProductsByProfit = calculateAllProductsByProfit();
+      const tableBody = document.getElementById('top-products-admin-content');
+      tableBody.innerHTML = '';
+      
+      if (allProductsByProfit.length === 0) {
+        tableBody.innerHTML = `
+          <tr>
+            <td colspan="5" class="py-4 text-center text-gray-500 dark:text-gray-400">No products available.</td>
+          </tr>
+        `;
+        return;
+      }
+      
+      allProductsByProfit.forEach((product, index) => {
+        const row = document.createElement('tr');
+        row.className = 'border-b border-gray-200 dark:border-gray-700';
+        
+        // Determine profit color
+        const profitColor = product.totalProfit > 0 ? 'text-green-600 dark:text-green-400' : 
+                           product.totalProfit < 0 ? 'text-red-600 dark:text-red-400' : 
+                           'text-gray-600 dark:text-gray-400';
+        
+        row.innerHTML = `
+          <td class="py-2 px-4">
+            <div class="flex-shrink-0 w-8 h-8 bg-primary text-white rounded-full flex items-center justify-center font-bold text-sm">
+              ${index + 1}
+            </div>
+          </td>
+          <td class="py-2 px-4 flex items-center">
+            <img src="${product.image}" alt="${product.productName}" class="w-12 h-12 mr-3 object-contain bg-gray-100 dark:bg-gray-700 rounded">
+            <div>
+              <h4 class="font-semibold">${product.productName}</h4>
+            </div>
+          </td>
+          <td class="py-2 px-4">${product.originalQuantity} ${product.unit || 'pcs'}</td>
+          <td class="py-2 px-4">${product.soldQuantity} ${product.unit || 'pcs'}</td>
+          <td class="py-2 px-4 ${profitColor} font-bold">
+            ${formatPrice(product.totalProfit)}
+          </td>
+        `;
+        tableBody.appendChild(row);
+      });
+    }
+
+    // Function to populate product history table (similar to performance but different structure)
+    function populateProductHistory() {
+      const allProductsByProfit = calculateAllProductsByProfit();
+      const tableBody = document.getElementById('product-history-table-body');
+      tableBody.innerHTML = '';
+      
+      if (allProductsByProfit.length === 0) {
+        tableBody.innerHTML = `
+          <tr>
+            <td colspan="6" class="py-4 text-center text-gray-500 dark:text-gray-400">No product history available yet.</td>
+          </tr>
+        `;
+        return;
+      }
+      
+      allProductsByProfit.forEach(product => {
+        const row = document.createElement('tr');
+        row.className = 'border-b border-gray-200 dark:border-gray-700';
+        
+        const totalSoldAmount = productTracking[product.productId] ? productTracking[product.productId].totalSoldAmount : 0;
+        const remainingQuantity = product.originalQuantity - product.soldQuantity;
+        
+        row.innerHTML = `
+          <td class="py-2 px-4 flex items-center">
+            <img src="${product.image}" alt="${product.productName}" class="w-8 h-8 mr-2 object-contain bg-gray-100 dark:bg-gray-700 rounded">
+            ${product.productName}
+          </td>
+          <td class="py-2 px-4">${product.originalQuantity} ${product.unit || 'pcs'}</td>
+          <td class="py-2 px-4">${product.soldQuantity} ${product.unit || 'pcs'}</td>
+          <td class="py-2 px-4">${remainingQuantity} ${product.unit || 'pcs'}</td>
+          <td class="py-2 px-4">${formatPrice(totalSoldAmount)}</td>
+          <td class="py-2 px-4 ${product.totalProfit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}">
+            ${formatPrice(product.totalProfit)}
+          </td>
+        `;
+        tableBody.appendChild(row);
+      });
+    }
+    
+    // Employee Management Functions
+    function addNewEmployee() {
+      document.getElementById('employee-form-title').textContent = 'Add Employee';
+      document.getElementById('employee-id').value = '';
+      document.getElementById('employee-username').value = '';
+      document.getElementById('employee-full-name').value = '';
+      document.getElementById('employee-password').value = '';
+      document.getElementById('employee-role').value = 'cashier';
+      document.getElementById('employee-form-error').classList.add('hidden');
+      
+      document.getElementById('employee-form-modal').classList.remove('hidden');
+    }
+    
+    function editEmployee(employeeId) {
+      const employee = employees.find(emp => emp.id === employeeId);
+      if (!employee) return;
+      
+      document.getElementById('employee-form-title').textContent = 'Edit Employee';
+      document.getElementById('employee-id').value = employee.id;
+      document.getElementById('employee-username').value = employee.username;
+      document.getElementById('employee-full-name').value = employee.fullName;
+      document.getElementById('employee-password').value = employee.password;
+      document.getElementById('employee-role').value = employee.role;
+      document.getElementById('employee-form-error').classList.add('hidden');
+      
+      document.getElementById('employee-form-modal').classList.remove('hidden');
+    }
+    
+    function saveEmployee(formData) {
+      const id = formData.get('employee-id');
+      const username = formData.get('employee-username');
+      const fullName = formData.get('employee-full-name');
+      const password = formData.get('employee-password'); // Get password
+      const role = formData.get('employee-role');
+      
+      // Check if username already exists
+      const existingEmployee = employees.find(emp => 
+        emp.username.toLowerCase() === username.toLowerCase() && 
+        (!id || emp.id !== parseInt(id))
+      );
+      
+      if (existingEmployee) {
+        const errorElement = document.getElementById('employee-form-error');
+        errorElement.textContent = 'Username already exists.';
+        errorElement.classList.remove('hidden');
+        return false;
+      }
+      
+      if (id) {
+        // Update existing employee
+        const employeeIndex = employees.findIndex(emp => emp.id === parseInt(id));
+        if (employeeIndex !== -1) {
+          employees[employeeIndex] = {
+            id: parseInt(id),
+            username,
+            fullName,
+            password,
+            role
+          };
+          
+          // If updating current user, update display
+          if (currentUser && currentUser.id === parseInt(id)) {
+            currentUser = employees[employeeIndex];
+            document.getElementById('user-name').textContent = currentUser.fullName;
+            document.getElementById('user-role').textContent = currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1);
+            
+            // Update admin panel button visibility
+            // Ensure consistency with login function's button display logic
+            document.getElementById('admin-panel-btn').classList.add('hidden');
+            document.getElementById('super-admin-btn').classList.add('hidden');
+            document.getElementById('add-product-header-btn').classList.add('hidden');
+
+            if (currentUser.role === 'admin') {
+              document.getElementById('admin-panel-btn').classList.remove('hidden');
+              document.getElementById('super-admin-btn').classList.remove('hidden');
+            } 
+          }
+        }
+      } else {
+        // Add new employee
+        const newEmployee = {
+          id: employees.length > 0 ? Math.max(...employees.map(emp => emp.id)) + 1 : 1,
+          username,
+          fullName,
+          password,
+          role
+        };
+        
+        employees.push(newEmployee);
+      }
+      
+      // Save to localStorage
+      saveToLocalStorage('pos_employees', employees);
+      
+      document.getElementById('employee-form-modal').classList.add('hidden');
+      populateEmployeesTable();
+      return true;
+    }
+    
+    function deleteEmployee(employeeId) {
+      if (currentUser && employeeId === currentUser.id) {
+        alert("You cannot delete the currently logged-in user.");
+        return; // Cannot delete current user
+      }
+      
+      const employeeIndex = employees.findIndex(emp => emp.id === employeeId);
+      if (employeeIndex !== -1) {
+        if (confirm(`Are you sure you want to delete employee: ${employees[employeeIndex].fullName}?`)) {
+          employees.splice(employeeIndex, 1);
+          
+          // Save to localStorage
+          saveToLocalStorage('pos_employees', employees);
+          
+          populateEmployeesTable();
+        }
+      }
+    }
+    
+    // Reset Password Function
+    function resetPassword(employeeId, newPassword) {
+      const employee = employees.find(emp => emp.id === parseInt(employeeId));
+      if (!employee) return false;
+      
+      employee.password = newPassword;
+      
+      // Save to localStorage
+      saveToLocalStorage('pos_employees', employees);
+      
+      return true;
+    }
+    
+    // Update category filters based on available categories
+    function updateCategoryFilters() {
+      const categories = getAllCategories();
+      const categoryContainer = document.getElementById('categories-container');
+      
+      // Keep the existing "All" button
+      let html = `<button id="category-all" class="category-btn bg-primary text-white px-4 py-2 rounded-lg whitespace-nowrap flex-shrink-0">All</button>`;
+      
+      // Add buttons for each unique category except "all"
+      categories.forEach(category => {
+        if (category !== 'all') {
+          html += `
+            <button id="category-${category}" class="category-btn bg-gray-200 dark:bg-gray-800 px-4 py-2 rounded-lg whitespace-nowrap flex-shrink-0">
+              ${category.charAt(0).toUpperCase() + category.slice(1)}
+            </button>
+          `;
+        }
+      });
+      
+      categoryContainer.innerHTML = html;
+      
+      // Add event listeners for category buttons
+      document.getElementById('category-all').addEventListener('click', () => filterByCategory('all'));
+      categories.forEach(category => {
+        if (category !== 'all') {
+          const button = document.getElementById(`category-${category}`);
+          if (button) {
+            button.addEventListener('click', () => filterByCategory(category));
+          }
+        }
+      });
+    }
+    
+    function addNewProduct() {
+      document.getElementById('product-form-title').textContent = 'Add Product';
+      document.getElementById('product-id').value = '';
+      document.getElementById('original-product-name').value = '';
+      document.getElementById('product-name').value = '';
+      document.getElementById('product-buy-price').value = '';
+      document.getElementById('product-sale-price').value = '';
+      document.getElementById('product-tax').value = '15';
+      document.getElementById('product-quantity').value = '10';
+      document.getElementById('product-category').value = '';
+      document.getElementById('product-unit').value = 'pcs'; // Default unit
+      document.getElementById('product-image').value = '';
+      document.getElementById('product-form-error').classList.add('hidden');
+      
+      // Reset image preview
+      const previewContainer = document.getElementById('product-image-preview');
+      previewContainer.classList.add('hidden');
+      document.getElementById('preview-img').src = '';
+      
+      document.getElementById('product-form-modal').classList.remove('hidden');
+    }
+  
+    function editProduct(productId) {
+      const product = products.find(p => p.id === productId);
+      if (!product) return;
+      
+      document.getElementById('product-form-title').textContent = 'Edit Product';
+      document.getElementById('product-id').value = product.id;
+      document.getElementById('original-product-name').value = product.name;
+      document.getElementById('product-name').value = product.name;
+      document.getElementById('product-buy-price').value = product.buyPrice;
+      document.getElementById('product-sale-price').value = product.salePrice;
+      document.getElementById('product-tax').value = product.tax;
+      document.getElementById('product-quantity').value = product.quantity;
+      document.getElementById('product-category').value = product.category;
+      document.getElementById('product-unit').value = product.unit || 'pcs'; // Set existing unit or default
+      document.getElementById('product-form-error').classList.add('hidden');
+      
+      // Show the current product image in the preview
+      const previewContainer = document.getElementById('product-image-preview');
+      const previewImg = document.getElementById('preview-img');
+      previewImg.src = product.image;
+      previewContainer.classList.remove('hidden');
+      
+      document.getElementById('product-form-modal').classList.remove('hidden');
+    }
+    
+    function saveProduct(event) {
+      event.preventDefault(); // Prevent form submission
+      
+      // Get form values directly from the form elements
+      const productId = document.getElementById('product-id').value;
+      const originalName = document.getElementById('original-product-name').value;
+      const name = document.getElementById('product-name').value;
+      const buyPrice = parseFloat(document.getElementById('product-buy-price').value);
+      const salePrice = parseFloat(document.getElementById('product-sale-price').value);
+      const tax = parseFloat(document.getElementById('product-tax').value);
+      const quantity = parseInt(document.getElementById('product-quantity').value);
+      const category = document.getElementById('product-category').value.toLowerCase().trim();
+      const unit = document.getElementById('product-unit').value.toLowerCase().trim(); // NEW
+      
+      // Validate the inputs
+      if (!name || isNaN(buyPrice) || isNaN(salePrice) || isNaN(tax) || isNaN(quantity) || !category || !unit) {
+        const errorElement = document.getElementById('product-form-error');
+        errorElement.textContent = 'Please fill in all required fields with valid values.';
+        errorElement.classList.remove('hidden');
+        return false;
+      }
+      
+      // Validate that sale price is not less than buy price
+      if (salePrice < buyPrice) {
+        const errorElement = document.getElementById('product-form-error');
+        errorElement.textContent = 'Sale price cannot be less than buy price.';
+        errorElement.classList.remove('hidden');
+        return false;
+      }
+      
+      // Validate tax is between 0 and 100
+      if (tax < 0 || tax > 100) {
+        const errorElement = document.getElementById('product-form-error');
+        errorElement.textContent = 'Tax must be between 0% and 100%.';
+        errorElement.classList.remove('hidden');
+        return false;
+      }
+      
+      // Check if we're editing or creating a new product
+      const isEditing = productId && productId.trim() !== '';
+      
+      // Get the image file or use existing image if no new file is selected
+      const imageInput = document.getElementById('product-image');
+      const imageFile = imageInput.files[0];
+      
+      if (imageFile) {
+        // New image file selected - read it and process
+        const reader = new FileReader();
+        
+        reader.onload = function(event) {
+          const image = event.target.result; // Base64 image string
+          saveProductWithImage(productId, originalName, name, buyPrice, salePrice, tax, quantity, category, unit, image, isEditing); // Added unit
+        };
+        
+        reader.readAsDataURL(imageFile); // Convert image file to base64
+      } else if (isEditing) {
+        // Editing and no new image - use existing image
+        const existingProduct = products.find(p => p.id === parseInt(productId));
+        if (existingProduct) {
+          saveProductWithImage(productId, originalName, name, buyPrice, salePrice, tax, quantity, category, unit, existingProduct.image, true); // Added unit
+        }
+      } else {
+        // New product but no image uploaded - generate a default image
+        const defaultEmoji = category === 'fruits' ? '🍎' : 
+                           category === 'dairy' ? '🥛' : 
+                           category === 'bakery' ? '🍞' : '📦';
+        
+        const defaultImage = category === 'fruits' ? 
+          generateFruitImage(defaultEmoji) : 
+          generateProductImage(defaultEmoji);
+        
+        saveProductWithImage(productId, originalName, name, buyPrice, salePrice, tax, quantity, category, unit, defaultImage, false); // Added unit
+      }
+      
+      return true;
+    }
+  
+    function saveProductWithImage(id, originalName, name, buyPrice, salePrice, tax, quantity, category, unit, image, isEditing) { // Added unit
+      if (isEditing) {
+        const existingProduct = products.find(p => p.id === parseInt(id));
+        if (!existingProduct) return;
+        
+        // Check if name changed - if so, treat as new product
+        if (originalName && name !== originalName) {
+          // Name changed - create new product and remove old tracking
+          const newProduct = {
+            id: products.length > 0 ? Math.max(...products.map(p => p.id)) + 1 : 1,
+            name,
+            buyPrice,
+            salePrice,
+            tax,
+            quantity,
+            category,
+            unit, // NEW
+            image
+          };
+          
+          // Remove old product
+          const oldProductIndex = products.findIndex(p => p.id === parseInt(id));
+          if (oldProductIndex !== -1) {
+            products.splice(oldProductIndex, 1);
+            removeProductTracking(parseInt(id));
+          }
+          
+          // Add new product
+          products.push(newProduct);
+          
+          // Initialize tracking for new product
+          productTracking[newProduct.id] = {
+            productName: newProduct.name,
+            originalQuantity: newProduct.quantity,
+            soldQuantity: 0,
+            totalSoldAmount: 0,
+            totalProfit: 0,
+            image: newProduct.image,
+            unit: newProduct.unit // NEW
+          };
+          
+        } else {
+          // Only quantity or other attributes changed - update existing product
+          const oldQuantity = existingProduct.quantity;
+          
+          existingProduct.name = name;
+          existingProduct.buyPrice = buyPrice;
+          existingProduct.salePrice = salePrice;
+          existingProduct.tax = tax;
+          existingProduct.quantity = quantity;
+          existingProduct.category = category;
+          existingProduct.unit = unit; // NEW
+          existingProduct.image = image;
+          
+          // Update tracking
+          if (productTracking[parseInt(id)]) {
+            const quantityDifference = quantity - oldQuantity;
+            productTracking[parseInt(id)].originalQuantity += quantityDifference;
+            productTracking[parseInt(id)].productName = name;
+            productTracking[parseInt(id)].image = image;
+            productTracking[parseInt(id)].unit = unit; // NEW
+          } else {
+            // Initialize tracking if it doesn't exist
+            productTracking[parseInt(id)] = {
+              productName: name,
+              originalQuantity: quantity,
+              soldQuantity: 0,
+              totalSoldAmount: 0,
+              totalProfit: 0,
+              image: image,
+              unit: unit // NEW
+            };
+          }
+        }
+      } else {
+        // Add new product - always create with new ID
+        const newProduct = {
+          id: products.length > 0 ? Math.max(...products.map(p => p.id)) + 1 : 1,
+          name,
+          buyPrice,
+          salePrice,
+          tax,
+          quantity,
+          category,
+          unit, // NEW
+          image
+        };
+        products.push(newProduct);
+        
+        // Initialize tracking for new product
+        productTracking[newProduct.id] = {
+          productName: newProduct.name,
+          originalQuantity: newProduct.quantity,
+          soldQuantity: 0,
+          totalSoldAmount: 0,
+          totalProfit: 0,
+          image: newProduct.image,
+          unit: newProduct.unit // NEW
+        };
+      }
+      
+      // Add new unit to the units array if it's not already there
+      if (!units.includes(unit)) {
+        units.push(unit);
+        saveToLocalStorage('pos_units', units);
+      }
+
+      // Save to localStorage
+      saveToLocalStorage('pos_products', products);
+      saveToLocalStorage('pos_product_tracking', productTracking);
+      
+      // Close the modal
+      document.getElementById('product-form-modal').classList.add('hidden');
+      
+      // Refresh displays
+      populateProductsTable();
+      
+      // Update category filters if we have new categories
+      updateCategoryFilters();
+      updateUnitSuggestions(); // Update unit suggestions
+      
+      // Refresh product grid with current category filter
+      const activeCategoryBtn = document.querySelector('.category-btn.bg-primary');
+      const activeCategory = activeCategoryBtn ? activeCategoryBtn.id.replace('category-', '') : 'all';
+      filterByCategory(activeCategory);
+      
+      // Update product history if admin panel is open
+      if (document.getElementById('admin-panel-modal').classList.contains('hidden') === false) {
+        populateTopProductsAdmin();
+        populateProductHistory();
+      }
+    }
+    
+    function deleteProduct(productId) {
+      // Check if product is in any cart
+      const inCart = cart.some(item => item.product.id === productId);
+      if (inCart) {
+        if (confirm('This product is currently in the cart. Removing it will also remove it from the cart. Continue?')) {
+          // Remove from cart
+          cart = cart.filter(item => item.product.id !== productId);
+          // Remove from DOM
+          const cartItemElement = document.querySelector(`.cart-item[data-id="${productId}"]`);
+          if (cartItemElement) {
+            cartItemElement.remove();
+          }
+          // If cart is empty after removal, show message and disable checkout
+          if (cart.length === 0) {
+            document.getElementById('empty-cart-message').style.display = 'block';
+            document.getElementById('checkout-btn').disabled = true;
+          }
+          updateCartTotals();
+        } else {
+          return;
+        }
+      }
+      
+      const productIndex = products.findIndex(p => p.id === productId);
+      if (productIndex !== -1) {
+        if (confirm(`Are you sure you want to delete product: ${products[productIndex].name}? This cannot be undone.`)) {
+          // Permanently remove the product and all tracking data
+          products.splice(productIndex, 1);
+          removeProductTracking(productId);
+          
+          // Save to localStorage
+          saveToLocalStorage('pos_products', products);
+          
+          populateProductsTable();
+          
+          // Update category filters in case we removed the last product of a category
+          updateCategoryFilters();
+          updateUnitSuggestions(); // Update unit suggestions
+          
+          // Refresh products display
+          const activeCategoryBtn = document.querySelector('.category-btn.bg-primary');
+          const activeCategory = activeCategoryBtn ? activeCategoryBtn.id.replace('category-', '') : 'all';
+          filterByCategory(activeCategory);
+          
+          // Update product history if admin panel is open
+          if (document.getElementById('admin-panel-modal').classList.contains('hidden') === false) {
+            populateTopProductsAdmin();
+            populateProductHistory();
+          }
+        }
+      }
+    }
+    
+    // Category scrolling functions
+    function scrollCategories(direction) {
+      const container = document.getElementById('categories-container');
+      const scrollAmount = 200; // pixels to scroll
+      
+      if (direction === 'left') {
+        container.scrollLeft -= scrollAmount;
+      } else {
+        container.scrollLeft += scrollAmount;
+      }
+    }
+    
+    // Process checkout with user info
+    function processCheckout() {
+      if (!currentUser) return;
+
+      // Check profit tax limit
+      if (isProfitTaxLimitReached()) {
+        alert('Profit tax limit reached! Call 0910167348');
+        return;
+      }
+
+      // Confirm checkout
+      if (!confirm("Are you sure you want to complete this purchase?")) {
+        return; // User cancelled the checkout
+      }
+
+      // Generate receipt date
+      const now = new Date();
+      const dateOptions = { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+      
+      document.getElementById('receipt-date').textContent = now.toLocaleDateString('en-US', dateOptions);
+      
+      // Generate receipt items and update quantities
+      const receiptItemsContainer = document.getElementById('receipt-items');
+      receiptItemsContainer.innerHTML = '';
+      
+      // Prepare sale items array with both buyPrice and salePrice
+      const saleItems = [];
+      
+      cart.forEach(item => {
+        const product = products.find(p => p.id === item.product.id);
+        
+        if (product) {
+          // Update product quantity
+          product.quantity -= item.quantity;
+          
+          // Calculate amounts
+          const saleAmount = product.salePrice * item.quantity;
+          const profit = (product.salePrice - product.buyPrice) * item.quantity;
+          
+          // Update daily sales tracking with seller info (using currentUser.fullName)
+          updateDailySales(product.id, product.name, item.quantity, saleAmount, currentUser.fullName, product.unit);
+          
+          // Update product tracking
+          updateProductTracking(product.id, product.name, item.quantity, saleAmount, profit, product.image, product.unit);
+          
+          // Create sale item with buy price information for profit calculation
+          saleItems.push({
+            productId: product.id,
+            productName: product.name,
+            price: product.salePrice,
+            buyPrice: product.buyPrice,
+            tax: product.tax,
+            quantity: item.quantity,
+            unit: product.unit, // Include unit in sale history item
+            total: product.salePrice * item.quantity
+          });
+          
+          // Add to receipt UI
+          const itemTotal = product.salePrice * item.quantity;
+          const receiptItem = document.createElement('div');
+          receiptItem.className = 'flex justify-between mb-2';
+          receiptItem.innerHTML = `
+            <div>
+              <span>${product.name} x ${item.quantity} ${product.unit || 'pcs'}</span>
+              <span class="text-sm text-gray-500 dark:text-gray-400 block">${formatPrice(product.salePrice)} each</span>
+            </div>
+            <span>${formatPrice(itemTotal)}</span>
+          `;
+          receiptItemsContainer.appendChild(receiptItem);
+        }
+      });
+      
+      // Save updated products to localStorage
+      saveToLocalStorage('pos_products', products);
+      
+      // Calculate subtotal
+      const subtotal = cart.reduce((total, item) => total + (item.product.salePrice * item.quantity), 0);
+      
+      // Calculate tax based on each product's tax rate
+      const tax = cart.reduce((total, item) => {
+        const productTax = (item.product.salePrice * item.quantity) * (item.product.tax / 100);
+        return total + productTax;
+      }, 0);
+      
+      const total = subtotal + tax;
+      
+      // Set receipt totals
+      document.getElementById('receipt-subtotal').textContent = formatPrice(subtotal);
+      document.getElementById('receipt-tax').textContent = formatPrice(tax);
+      document.getElementById('receipt-total').textContent = formatPrice(total);
+      
+      // Add to sales history
+      const saleId = salesHistory.length > 0 ? Math.max(...salesHistory.map(sale => sale.id)) + 1 : 1;
+      
+      const sale = {
+        id: saleId,
+        date: now.toISOString(),
+        items: saleItems,
+        subtotal,
+        tax,
+        total,
+        cashier: currentUser.fullName
+      };
+      
+      salesHistory.push(sale);
+      
+      // Save to localStorage
+      saveToLocalStorage('pos_sales', salesHistory);
+      
+      // Show receipt modal
+      document.getElementById('receipt-modal').classList.remove('hidden');
+      
+      // Clear cart
+      cart = [];
+      document.getElementById('cart-items').innerHTML = '<p id="empty-cart-message" class="text-gray-500 dark:text-gray-400 text-center py-4">Your cart is empty</p>';
+      document.getElementById('checkout-btn').disabled = true;
+      updateCartTotals();
+      
+      // Update product display (this will re-render buttons and remove 'selling-active' class)
+      const activeCategoryBtn = document.querySelector('.category-btn.bg-primary');
+      const activeCategory = activeCategoryBtn ? activeCategoryBtn.id.replace('category-', '') : 'all';
+      filterByCategory(activeCategory);
+      
+      // Update admin panel data if open
+      if (document.getElementById('admin-panel-modal').classList.contains('hidden') === false) {
+        updateSalesHistory();
+        populateTopProductsAdmin();
+        populateProductHistory();
+      }
+    }
+
+    // Function to print the receipt
+    function printReceipt() {
+      window.print();
+    }
+    
+    // Initialize application
+    function initialize() {
+      // Update app title and receipt info on load
+      updateAppTitle();
+      updateReceiptInfo();
+      updateProfitTaxDisplay();
+      updateProfitTaxButtonText(); // Update button text on load
+      
+      // Update category and unit suggestions in product form based on existing data
+      updateCategorySuggestions();
+      updateUnitSuggestions(); // NEW
+      
+      // Add event listener for login form
+      document.getElementById('login-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        
+        const loginSuccess = login(username, password);
+        
+        if (!loginSuccess) {
+          const errorElement = document.getElementById('login-error');
+          errorElement.textContent = 'Invalid username or password.';
+          errorElement.classList.remove('hidden');
+          
+          // Add shake animation
+          document.querySelector('#login-form button[type="submit"]').classList.add('shake');
+          setTimeout(() => {
+            document.querySelector('#login-form button[type="submit"]').classList.remove('shake');
+          }, 500);
+        }
+      });
+      
+      // Add event listener for logout button
+      document.getElementById('logout-btn').addEventListener('click', logout);
+      
+      // Add event listener for add product header button
+      document.getElementById('add-product-header-btn').addEventListener('click', addNewProduct);
+      
+      // Add event listener for daily sales button
+      document.getElementById('daily-sales-btn').addEventListener('click', showDailySales);
+      
+      // Add event listener for close daily sales button
+      document.getElementById('close-daily-sales').addEventListener('click', () => {
+        document.getElementById('daily-sales-modal').classList.add('hidden');
+      });
+      
+          
+      
+      // Add event listener for admin panel button
+      document.getElementById('admin-panel-btn').addEventListener('click', showAdminPanel);
+      
+      // Add event listener for close admin panel button
+      document.getElementById('close-admin-panel').addEventListener('click', () => {
+        document.getElementById('admin-panel-modal').classList.add('hidden');
+      });
+      
+      // Add event listener for super admin button
+      document.getElementById('super-admin-btn').addEventListener('click', showSuperAdminPasswordPrompt);
+      
+      // Add event listeners for super admin password form
+      document.getElementById('super-admin-password-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const password = document.getElementById('super-admin-password').value;
+        
+        if (password === 'Fent0942Pass') {
+          document.getElementById('super-admin-password-modal').classList.add('hidden');
+          showSuperAdminPanel();
+        } else {
+          const errorElement = document.getElementById('super-admin-password-error');
+          errorElement.textContent = 'Incorrect password.';
+          errorElement.classList.remove('hidden');
+        }
+      });
+      
+      document.getElementById('close-super-admin-password').addEventListener('click', () => {
+        document.getElementById('super-admin-password-modal').classList.add('hidden');
+      });
+      
+      // Add event listeners for super admin panel
+      document.getElementById('close-super-admin').addEventListener('click', () => {
+        document.getElementById('super-admin-modal').classList.add('hidden');
+      });
+      
+      document.getElementById('reset-sales-history-btn').addEventListener('click', resetSalesHistory);
+      
+      document.getElementById('app-info-form').addEventListener('submit', saveAppInfo);
+      
+      // Add event listeners for profit tax limit
+      document.getElementById('profit-tax-limit-btn').addEventListener('click', () => {
+        document.getElementById('profit-limit-input').value = profitTaxLimit !== null ? profitTaxLimit : '';
+        document.getElementById('profit-tax-limit-modal').classList.remove('hidden');
+      });
+      
+      document.getElementById('profit-tax-limit-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const limit = parseFloat(document.getElementById('profit-limit-input').value);
+        
+        if (isNaN(limit) || limit < 0) {
+          alert('Please enter a valid positive number.');
+          return;
+        }
+        
+        profitTaxLimit = limit;
+        saveToLocalStorage('pos_profit_tax_limit', profitTaxLimit);
+        updateProfitTaxDisplay();
+        
+        document.getElementById('profit-tax-limit-modal').classList.add('hidden');
+        
+        // Refresh product display to update sell button states
+        const activeCategoryBtn = document.querySelector('.category-btn.bg-primary');
+        const activeCategory = activeCategoryBtn ? activeCategoryBtn.id.replace('category-', '') : 'all';
+        filterByCategory(activeCategory);
+      });
+      
+      document.getElementById('close-profit-tax-limit').addEventListener('click', () => {
+        document.getElementById('profit-tax-limit-modal').classList.add('hidden');
+      });
+      
+      // Add event listeners for category scrolling
+      document.getElementById('scroll-left').addEventListener('click', () => scrollCategories('left'));
+      document.getElementById('scroll-right').addEventListener('click', () => scrollCategories('right'));
+      
+      // Add event listeners for admin panel tabs
+      document.getElementById('tab-employees').addEventListener('click', () => {
+        document.querySelectorAll('.admin-tab-btn').forEach(btn => {
+          btn.classList.remove('border-primary', 'text-primary', 'dark:text-secondary', 'dark:border-secondary');
+          btn.classList.add('border-transparent', 'text-gray-500', 'dark:text-gray-400');
+        });
+        document.getElementById('tab-employees').classList.remove('border-transparent', 'text-gray-500', 'dark:text-gray-400');
+        document.getElementById('tab-employees').classList.add('border-primary', 'text-primary', 'dark:text-secondary', 'dark:border-secondary');
+        
+        document.querySelectorAll('.tab-content').forEach(content => {
+          content.classList.add('hidden');
+        });
+        document.getElementById('tab-content-employees').classList.remove('hidden');
+      });
+      
+      document.getElementById('tab-products').addEventListener('click', () => {
+        document.querySelectorAll('.admin-tab-btn').forEach(btn => {
+          btn.classList.remove('border-primary', 'text-primary', 'dark:text-secondary', 'dark:border-secondary');
+          btn.classList.add('border-transparent', 'text-gray-500', 'dark:text-gray-400');
+        });
+        document.getElementById('tab-products').classList.remove('border-transparent', 'text-gray-500', 'dark:text-gray-400');
+        document.getElementById('tab-products').classList.add('border-primary', 'text-primary', 'dark:text-secondary', 'dark:border-secondary');
+        
+        document.querySelectorAll('.tab-content').forEach(content => {
+          content.classList.add('hidden');
+        });
+        document.getElementById('tab-content-products').classList.remove('hidden');
+      });
+      
+      document.getElementById('tab-sales').addEventListener('click', () => {
+        document.querySelectorAll('.admin-tab-btn').forEach(btn => {
+          btn.classList.remove('border-primary', 'text-primary', 'dark:text-secondary', 'dark:border-secondary');
+          btn.classList.add('border-transparent', 'text-gray-500', 'dark:text-gray-400');
+        });
+        document.getElementById('tab-sales').classList.remove('border-transparent', 'text-gray-500', 'dark:text-gray-400');
+        document.getElementById('tab-sales').classList.add('border-primary', 'text-primary', 'dark:text-secondary', 'dark:border-secondary');
+        
+        document.querySelectorAll('.tab-content').forEach(content => {
+          content.classList.add('hidden');
+        });
+        document.getElementById('tab-content-sales').classList.remove('hidden');
+        updateSalesHistory();
+      });
+      
+      document.getElementById('tab-top-products').addEventListener('click', () => {
+        document.querySelectorAll('.admin-tab-btn').forEach(btn => {
+          btn.classList.remove('border-primary', 'text-primary', 'dark:text-secondary', 'dark:border-secondary');
+          btn.classList.add('border-transparent', 'text-gray-500', 'dark:text-gray-400');
+        });
+        document.getElementById('tab-top-products').classList.remove('border-transparent', 'text-gray-500', 'dark:text-gray-400');
+        document.getElementById('tab-top-products').classList.add('border-primary', 'text-primary', 'dark:text-secondary', 'dark:border-secondary');
+        
+        document.querySelectorAll('.tab-content').forEach(content => {
+          content.classList.add('hidden');
+        });
+        document.getElementById('tab-content-top-products').classList.remove('hidden');
+        populateTopProductsAdmin();
+      });
+      
+      document.getElementById('tab-product-history').addEventListener('click', () => {
+        document.querySelectorAll('.admin-tab-btn').forEach(btn => {
+          btn.classList.remove('border-primary', 'text-primary', 'dark:text-secondary', 'dark:border-secondary');
+          btn.classList.add('border-transparent', 'text-gray-500', 'dark:text-gray-400');
+        });
+        document.getElementById('tab-product-history').classList.remove('border-transparent', 'text-gray-500', 'dark:text-gray-400');
+        document.getElementById('tab-product-history').classList.add('border-primary', 'text-primary', 'dark:text-secondary', 'dark:border-secondary');
+        
+        document.querySelectorAll('.tab-content').forEach(content => {
+          content.classList.add('hidden');
+        });
+        document.getElementById('tab-content-product-history').classList.remove('hidden');
+        populateProductHistory();
+      });
+      
+      // Add event listener for add employee button
+      document.getElementById('add-employee-btn').addEventListener('click', addNewEmployee);
+      
+      // Add event listeners for employee form
+      document.getElementById('close-employee-form').addEventListener('click', () => {
+        document.getElementById('employee-form-modal').classList.add('hidden');
+      });
+      
+      document.getElementById('cancel-employee-form').addEventListener('click', () => {
+        document.getElementById('employee-form-modal').classList.add('hidden');
+      });
+      
+      document.getElementById('employee-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        saveEmployee(formData);
+      });
+      
+      // Add event listeners for reset password form
+      document.getElementById('reset-password-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const employeeId = document.getElementById('reset-employee-id').value;
+        const newPassword = document.getElementById('new-password').value;
+        
+        if (resetPassword(employeeId, newPassword)) {
+          alert('Password reset successfully');
+          document.getElementById('reset-password-modal').classList.add('hidden');
+        }
+      });
+      
+      document.getElementById('close-reset-password').addEventListener('click', () => {
+        document.getElementById('reset-password-modal').classList.add('hidden');
+      });
+      
+      // Add event listener for add product button
+      document.getElementById('add-product-btn').addEventListener('click', addNewProduct);
+      
+      // Add event listeners for product form
+      document.getElementById('close-product-form').addEventListener('click', () => {
+        document.getElementById('product-form-modal').classList.add('hidden');
+      });
+      
+      document.getElementById('cancel-product-form').addEventListener('click', () => {
+        document.getElementById('product-form-modal').classList.add('hidden');
+      });
+     
+      // Set up image preview functionality
+      document.getElementById('product-image').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = function(event) {
+            const previewContainer = document.getElementById('product-image-preview');
+            const previewImg = document.getElementById('preview-img');
+            previewImg.src = event.target.result;
+            previewContainer.classList.remove('hidden');
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+     
+      // Fix for product form submission
+      document.getElementById('product-form').addEventListener('submit', saveProduct);
+      
+      // Update category filters
+      updateCategoryFilters();
+      
+      // Add event listener for search input
+      const searchInput = document.getElementById('search-input');
+      searchInput.addEventListener('input', () => searchProducts(searchInput.value));
+      
+      // Add event listener for checkout button
+      document.getElementById('checkout-btn').addEventListener('click', processCheckout);
+      
+      // Add event listener for close receipt button
+      document.getElementById('close-receipt').addEventListener('click', () => {
+        document.getElementById('receipt-modal').classList.add('hidden');
+      });
+
+      // Add event listener for print receipt button
+      document.getElementById('print-receipt-btn').addEventListener('click', printReceipt);
+      
+      // Close modals when clicking outside
+      document.getElementById('receipt-modal').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('receipt-modal')) {
+          document.getElementById('receipt-modal').classList.add('hidden');
+        }
+      });
+      
+      document.getElementById('daily-sales-modal').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('daily-sales-modal')) {
+          document.getElementById('daily-sales-modal').classList.add('hidden');
+        }
+      });
+      
+      document.getElementById('admin-panel-modal').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('admin-panel-modal')) {
+          document.getElementById('admin-panel-modal').classList.add('hidden');
+        }
+      });
+      
+      document.getElementById('super-admin-modal').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('super-admin-modal')) {
+          document.getElementById('super-admin-modal').classList.add('hidden');
+        }
+      });
+      
+      document.getElementById('super-admin-password-modal').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('super-admin-password-modal')) {
+          document.getElementById('super-admin-password-modal').classList.add('hidden');
+        }
+      });
+      
+      document.getElementById('profit-tax-limit-modal').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('profit-tax-limit-modal')) {
+          document.getElementById('profit-tax-limit-modal').classList.add('hidden');
+        }
+      });
+      
+      
+      
+  document.getElementById('employee-form-modal').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('employee-form-modal')) {
+          document.getElementById('employee-form-modal').classList.add('hidden');
+        }
+      });
+      
+      document.getElementById('product-form-modal').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('product-form-modal')) {
+          document.getElementById('product-form-modal').classList.add('hidden');
+        }
+      });
+      
+  // Edit Profit Tax Percentage functionality
+    document.getElementById('edit-profit-tax-btn').addEventListener('click', () => {
+      document.getElementById('profit-tax-input').value = profitTaxPercentage; // Set current value
+      document.getElementById('edit-profit-tax-modal').classList.remove('hidden');
+    });
+
+    document.getElementById('edit-profit-tax-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const newTax = parseFloat(document.getElementById('profit-tax-input').value);
+      if (!isNaN(newTax) && newTax >= 0 && newTax <= 100) {
+        profitTaxPercentage = newTax;
+        saveToLocalStorage('pos_profit_tax_percentage', profitTaxPercentage);
+        updateProfitTaxDisplay(); // Recalculate and display profit tax
+        updateProfitTaxButtonText(); // Update the button text
+        alert(`Profit Tax Percentage set to ${newTax}%`);
+        document.getElementById('edit-profit-tax-modal').classList.add('hidden');
+      } else {
+        alert('Please enter a valid percentage between 0 and 100.');
+      }
+    });
+
+    document.getElementById('close-edit-profit-tax').addEventListener('click', () => {
+      document.getElementById('edit-profit-tax-modal').classList.add('hidden');
+    });
+  
+     
+      document.getElementById('reset-password-modal').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('reset-password-modal')) {
+          document.getElementById('reset-password-modal').classList.add('hidden');
+        }
+        
+      });
+      
+      // Initialize products grid
+      displayProducts(products);
+    }
+    
+    // Update category suggestions in the product form
+    function updateCategorySuggestions() {
+      const datalist = document.getElementById('category-suggestions');
+      const categories = new Set(products.map(p => p.category));
+      
+      datalist.innerHTML = '';
+      categories.forEach(category => {
+        const option = document.createElement('option');
+        option.value = category;
+        datalist.appendChild(option);
+      });
+    }
+    
+    // Update unit suggestions in the product form
+function updateUnitSuggestions() {
+    const datalist = document.getElementById('unit-suggestions');
+    datalist.innerHTML = '';
+    units.forEach(unit => {
+        const option = document.createElement('option');
+        option.value = unit;
+        datalist.appendChild(option);
+    });
+}
+
+    
+    // Initialize the app when the DOM is loaded
+    document.addEventListener('DOMContentLoaded', initialize);
+  </script>
+</body>
+</html>
+      
+          
+      
+    
